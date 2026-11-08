@@ -2,22 +2,22 @@
 HTML Report Formatter for LibScope Intelligence.
 Produces standalone, beautifully styled dark-first HTML intelligence reports.
 """
-from datetime import datetime, timezone
 import html
-from typing import Any, Dict
+from datetime import UTC, datetime
+from typing import Any
 
 
-def generate_html_report(data: Dict[str, Any]) -> str:
+def generate_html_report(data: dict[str, Any]) -> str:
     """Generate self-contained, responsive dark HTML report."""
     pkg = data.get("package", {})
     repo = data.get("repository", {})
     score = data.get("score", {})
     dl = data.get("downloads", {})
-    health = data.get("health", {})
-    sec = data.get("security", {})
+    data.get("health", {})
+    data.get("security", {})
     adoption = data.get("adoption", {})
     ai = data.get("ai")
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     overall = score.get("overall_score")
     overall_display = f"{overall}" if overall is not None else "N/A"
@@ -247,7 +247,7 @@ def generate_html_report(data: Dict[str, Any]) -> str:
     </div>
 """
 
-    html_str += f"""
+    html_str += """
     <div class="card" style="margin-bottom: 2rem;">
       <h2>Adoption Evidence Details</h2>
       <table>

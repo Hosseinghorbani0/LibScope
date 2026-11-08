@@ -3,8 +3,9 @@ Competitor Intelligence and Package Comparison.
 Performs normalized side-by-side comparative analysis between packages with fairness indicators.
 """
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
+
 from libscope.core.logging import get_logger
 
 logger = get_logger("analyzer.competitor")
@@ -14,32 +15,32 @@ logger = get_logger("analyzer.competitor")
 class PackageComparisonItem:
     package_name: str
     ecosystem: str
-    overall_score: Optional[float]
+    overall_score: float | None
     confidence: str
     monthly_downloads: int
     weekly_downloads: int
     stars: int
     forks: int
     open_issues: int
-    latest_version: Optional[str]
-    days_since_last_release: Optional[int]
-    days_since_last_commit: Optional[int]
+    latest_version: str | None
+    days_since_last_release: int | None
+    days_since_last_commit: int | None
     confirmed_adoptions_count: int
     vulnerabilities_count: int
-    license: Optional[str]
-    comparability_notes: List[str] = field(default_factory=list)
+    license: str | None
+    comparability_notes: list[str] = field(default_factory=list)
 
 
 @dataclass
 class CompetitorComparisonReport:
     compared_at: datetime
-    packages: List[PackageComparisonItem]
-    download_leader: Optional[str]
-    repository_leader: Optional[str]
-    adoption_leader: Optional[str]
-    maintenance_leader: Optional[str]
-    security_leader: Optional[str]
-    summary_matrix: List[Dict[str, Any]]
+    packages: list[PackageComparisonItem]
+    download_leader: str | None
+    repository_leader: str | None
+    adoption_leader: str | None
+    maintenance_leader: str | None
+    security_leader: str | None
+    summary_matrix: list[dict[str, Any]]
     comparative_summary: str
 
 
@@ -48,10 +49,10 @@ class CompetitorAnalyzer:
 
     def compare(
         self,
-        package_data_list: List[Dict[str, Any]],
+        package_data_list: list[dict[str, Any]],
     ) -> CompetitorComparisonReport:
-        now = datetime.now(timezone.utc)
-        items: List[PackageComparisonItem] = []
+        now = datetime.now(UTC)
+        items: list[PackageComparisonItem] = []
 
         # Check ecosystem uniformity
         ecosystems = {p.get("ecosystem", "pypi") for p in package_data_list}

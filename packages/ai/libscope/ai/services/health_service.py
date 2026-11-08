@@ -1,7 +1,7 @@
 """
 Repository Health & Maintenance Analysis Service powered by askai-python.
 """
-from typing import List, Optional
+
 from libscope.ai.client import AskAIClient
 from libscope.ai.models import HealthAssessmentOutput
 from libscope.ai.output_validator import AIOutputValidator
@@ -14,7 +14,7 @@ logger = get_logger("ai.service.health")
 class HealthAnalysisService:
     """Evaluates repository engineering practices, governance, and cadence."""
 
-    def __init__(self, client: Optional[AskAIClient] = None):
+    def __init__(self, client: AskAIClient | None = None):
         self.client = client or AskAIClient()
 
     async def analyze(
@@ -24,10 +24,10 @@ class HealthAnalysisService:
         forks: int,
         watchers: int,
         open_issues: int,
-        days_since_commit: Optional[int],
-        days_since_release: Optional[int],
+        days_since_commit: int | None,
+        days_since_release: int | None,
         has_readme: bool,
-        license_str: Optional[str],
+        license_str: str | None,
         has_contributing: bool,
         has_security_md: bool,
         has_ci: bool,
@@ -87,17 +87,17 @@ class HealthAnalysisService:
     def _build_deterministic_fallback(
         self,
         repo_name: str,
-        days_since_commit: Optional[int],
-        days_since_release: Optional[int],
+        days_since_commit: int | None,
+        days_since_release: int | None,
         has_readme: bool,
         has_contributing: bool,
         has_security_md: bool,
         has_ci: bool,
         is_archived: bool,
-        notice: Optional[str] = None,
+        notice: str | None = None,
     ) -> HealthAssessmentOutput:
-        strengths: List[str] = []
-        weaknesses: List[str] = []
+        strengths: list[str] = []
+        weaknesses: list[str] = []
 
         if is_archived:
             return HealthAssessmentOutput(

@@ -3,8 +3,9 @@ Security Intelligence and Vulnerability Analysis.
 Integrates with OSV (Open Source Vulnerabilities) API for CVE and GHSA tracking.
 """
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
+
 import httpx
 from libscope.core.logging import get_logger
 from libscope.core.security import create_safe_httpx_client
@@ -18,13 +19,13 @@ class VulnerabilityFinding:
     severity: str    # CRITICAL, HIGH, MEDIUM, LOW, UNKNOWN
     affected_package: str
     affected_versions: str
-    fixed_version: Optional[str]
+    fixed_version: str | None
     source: str      # OSV / GHSA / NVD
-    reference_url: Optional[str]
+    reference_url: str | None
     title: str
     details: str
-    remediation: Optional[str]
-    detected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    remediation: str | None
+    detected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass
@@ -33,18 +34,18 @@ class SecurityReport:
     ecosystem: str
     checked_at: datetime
     has_known_vulnerabilities: bool
-    vulnerabilities: List[VulnerabilityFinding] = field(default_factory=list)
+    vulnerabilities: list[VulnerabilityFinding] = field(default_factory=list)
     critical_count: int = 0
     high_count: int = 0
     medium_count: int = 0
     low_count: int = 0
-    caveats: List[str] = field(default_factory=list)
+    caveats: list[str] = field(default_factory=list)
 
 
 class SecurityAnalyzer:
     """Queries OSV vulnerability database and evaluates package security posture."""
 
-    def __init__(self, client: Optional[httpx.AsyncClient] = None):
+    def __init__(self, client: httpx.AsyncClient | None = None):
         self._client = client
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -52,7 +53,7 @@ class SecurityAnalyzer:
             self._client = create_safe_httpx_client()
         return self._client
 
-    def _normalize_severity(self, raw_vuln: Dict[str, Any]) -> str:
+    def _normalize_severity(self, raw_vuln: dict[str, Any]) -> str:
         # Check database_specific or severity CVSS
         severities = raw_vuln.get("severity", [])
         for s in severities:
@@ -79,7 +80,7 @@ class SecurityAnalyzer:
         return "MEDIUM"
 
     async def check_vulnerabilities(self, package_name: str, ecosystem: str = "PyPI") -> SecurityReport:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         caveats = [
             "Absence of reported vulnerabilities indicates no publicly known CVEs; it does not guarantee absence of zero-day vulnerabilities or security flaws."
         ]
@@ -93,7 +94,7 @@ class SecurityAnalyzer:
             }
         }
 
-        vulnerabilities: List[VulnerabilityFinding] = []
+        vulnerabilities: list[VulnerabilityFinding] = []
         client = await self._get_client()
 
         try:

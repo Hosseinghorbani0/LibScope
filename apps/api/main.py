@@ -2,7 +2,6 @@
 API Entrypoint runner.
 """
 import uvicorn
-from libscope.api.main import app
 from libscope.core.config import get_settings
 
 if __name__ == "__main__":

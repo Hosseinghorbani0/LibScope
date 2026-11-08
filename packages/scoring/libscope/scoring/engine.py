@@ -2,11 +2,12 @@
 Evidence-Based Scoring Engine.
 Calculates transparent, explainable scores across multi-dimensional quality and adoption indicators.
 """
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
 import json
 import math
-from typing import Any, Dict, List, Optional
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from typing import Any
+
 from libscope.core.logging import get_logger
 
 logger = get_logger("scoring.engine")
@@ -17,11 +18,11 @@ SCORING_MODEL_VERSION = "v1.0.0"
 @dataclass
 class DimensionScore:
     name: str
-    score: Optional[float]  # 0 to 100, None if insufficient data
+    score: float | None  # 0 to 100, None if insufficient data
     weight: float
     confidence: str  # high, medium, low, none
     explanation: str
-    inputs: Dict[str, Any] = field(default_factory=dict)
+    inputs: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -29,10 +30,10 @@ class ScoreResult:
     package_name: str
     version: str
     calculated_at: datetime
-    overall_score: Optional[float]  # 0 to 100, or None if insufficient evidence
+    overall_score: float | None  # 0 to 100, or None if insufficient evidence
     confidence_level: str           # "high", "medium", "low"
     is_insufficient_data: bool
-    dimensions: Dict[str, DimensionScore] = field(default_factory=dict)
+    dimensions: dict[str, DimensionScore] = field(default_factory=dict)
     explanation: str = ""
     breakdown_json: str = ""
 
@@ -92,7 +93,7 @@ class ScoringEngine:
             inputs=inputs,
         )
 
-    def _calc_growth(self, growth_rate_pct: Optional[float], recent_trend: str) -> DimensionScore:
+    def _calc_growth(self, growth_rate_pct: float | None, recent_trend: str) -> DimensionScore:
         inputs = {"growth_rate_pct": growth_rate_pct, "recent_trend": recent_trend}
         if growth_rate_pct is None:
             return DimensionScore(
@@ -145,8 +146,8 @@ class ScoringEngine:
 
     def _calc_maintenance(
         self,
-        days_since_commit: Optional[int],
-        days_since_release: Optional[int],
+        days_since_commit: int | None,
+        days_since_release: int | None,
         is_archived: bool,
     ) -> DimensionScore:
         inputs = {
@@ -204,7 +205,7 @@ class ScoringEngine:
             inputs=inputs,
         )
 
-    def _calc_documentation(self, has_readme: bool, has_docs_site: bool, description: Optional[str]) -> DimensionScore:
+    def _calc_documentation(self, has_readme: bool, has_docs_site: bool, description: str | None) -> DimensionScore:
         inputs = {"has_readme": has_readme, "has_docs_site": has_docs_site, "has_desc": bool(description)}
         score = 20.0
         if description and len(description) > 10:
@@ -277,16 +278,16 @@ class ScoringEngine:
         package_name: str,
         monthly_downloads: int = 0,
         stars: int = 0,
-        growth_rate_pct: Optional[float] = None,
+        growth_rate_pct: float | None = None,
         recent_trend: str = "stable",
         confirmed_adoptions: int = 0,
         possible_usages: int = 0,
-        days_since_commit: Optional[int] = None,
-        days_since_release: Optional[int] = None,
+        days_since_commit: int | None = None,
+        days_since_release: int | None = None,
         is_archived: bool = False,
         has_readme: bool = True,
         has_docs_site: bool = False,
-        description: Optional[str] = None,
+        description: str | None = None,
         has_license: bool = True,
         is_standard_license: bool = True,
         has_ci: bool = False,
@@ -294,7 +295,7 @@ class ScoringEngine:
         critical_or_high: int = 0,
         has_security_policy: bool = False,
     ) -> ScoreResult:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Calculate individual dimensions
         dim_pop = self._calc_popularity(monthly_downloads, stars)

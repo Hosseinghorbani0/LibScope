@@ -2,9 +2,10 @@
 GitHub Repository and Code Host Provider implementation.
 Queries GitHub REST API v3 with authentication support, rate limit tracking, and safe fallbacks.
 """
-from datetime import datetime, timezone
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Any
+
 import httpx
 from libscope.core.config import get_settings
 from libscope.core.logging import get_logger
@@ -25,23 +26,23 @@ logger = get_logger("provider.github")
 class GitHubProvider(BaseProvider):
     """Provider for GitHub repositories and public code search."""
 
-    def __init__(self, token: Optional[str] = None, client: Optional[httpx.AsyncClient] = None):
+    def __init__(self, token: str | None = None, client: httpx.AsyncClient | None = None):
         settings = get_settings()
         self._token = token or settings.effective_github_token
         self._client = client
-        self._rate_limit_remaining: Optional[int] = None
-        self._rate_limit_reset: Optional[int] = None
+        self._rate_limit_remaining: int | None = None
+        self._rate_limit_reset: int | None = None
 
     @property
     def name(self) -> str:
         return "github"
 
     @property
-    def supported_ecosystems(self) -> List[str]:
+    def supported_ecosystems(self) -> list[str]:
         return ["github", "git"]
 
     @property
-    def capabilities(self) -> Dict[str, bool]:
+    def capabilities(self) -> dict[str, bool]:
         return {
             "metadata": True,
             "releases": True,
@@ -58,7 +59,7 @@ class GitHubProvider(BaseProvider):
             self._client = create_safe_httpx_client()
         return self._client
 
-    def _get_headers(self) -> Dict[str, str]:
+    def _get_headers(self) -> dict[str, str]:
         headers = {
             "Accept": "application/vnd.github.v3+json",
         }
@@ -66,7 +67,7 @@ class GitHubProvider(BaseProvider):
             headers["Authorization"] = f"Bearer {self._token}"
         return headers
 
-    def parse_owner_repo(self, query_or_url: str) -> Tuple[str, str]:
+    def parse_owner_repo(self, query_or_url: str) -> tuple[str, str]:
         """Extract (owner, repo) from URL or shorthand string 'owner/repo'."""
         cleaned = query_or_url.strip()
         match = re.search(r"github\.com/([a-zA-Z0-9_\-\.]+)/([a-zA-Z0-9_\-\.]+)", cleaned)
@@ -170,7 +171,7 @@ class GitHubProvider(BaseProvider):
             ),
         )
 
-    async def fetch_community_profile(self, owner: str, repo: str) -> Dict[str, Any]:
+    async def fetch_community_profile(self, owner: str, repo: str) -> dict[str, Any]:
         """Fetch repository community profile (health files, license, readme)."""
         url = f"https://api.github.com/repos/{owner}/{repo}/community/profile"
         client = await self._get_client()
@@ -182,7 +183,7 @@ class GitHubProvider(BaseProvider):
             logger.debug(f"Could not fetch community profile for {owner}/{repo}: {exc}")
         return {}
 
-    async def fetch_raw_file(self, owner: str, repo: str, file_path: str, branch: str = "main") -> Optional[str]:
+    async def fetch_raw_file(self, owner: str, repo: str, file_path: str, branch: str = "main") -> str | None:
         """Fetch raw content of a specific file in the repository (e.g. pyproject.toml, README)."""
         url = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{file_path}"
         client = await self._get_client()
@@ -208,7 +209,7 @@ class GitHubProvider(BaseProvider):
             provenance=repo_data.provenance,
         )
 
-    async def fetch_releases(self, name: str) -> List[NormalizedRelease]:
+    async def fetch_releases(self, name: str) -> list[NormalizedRelease]:
         owner, repo = self.parse_owner_repo(name)
         url = f"https://api.github.com/repos/{owner}/{repo}/releases"
         client = await self._get_client()
@@ -218,7 +219,7 @@ class GitHubProvider(BaseProvider):
             if resp.status_code != 200:
                 return []
             data = resp.json()
-            releases: List[NormalizedRelease] = []
+            releases: list[NormalizedRelease] = []
             for item in data:
                 tag = item.get("tag_name", "")
                 published_at = item.get("published_at")
@@ -255,10 +256,10 @@ class GitHubProvider(BaseProvider):
             ),
         )
 
-    async def fetch_dependencies(self, name: str, version: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def fetch_dependencies(self, name: str, version: str | None = None) -> list[dict[str, Any]]:
         return []
 
-    async def search_code_adoption(self, package_name: str, max_results: int = 15) -> List[Dict[str, Any]]:
+    async def search_code_adoption(self, package_name: str, max_results: int = 15) -> list[dict[str, Any]]:
         """
         Search for adoption evidence of package_name in manifests across public GitHub repositories.
         Searches filenames like requirements.txt, pyproject.toml, setup.py, package.json.

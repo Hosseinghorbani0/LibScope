@@ -1,11 +1,11 @@
 """
 Markdown Report Formatter for LibScope Intelligence.
 """
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 
-def generate_markdown_report(data: Dict[str, Any]) -> str:
+def generate_markdown_report(data: dict[str, Any]) -> str:
     """Generate professional, reproducible GitHub-flavored Markdown intelligence report."""
     pkg = data.get("package", {})
     repo = data.get("repository", {})
@@ -15,8 +15,8 @@ def generate_markdown_report(data: Dict[str, Any]) -> str:
     sec = data.get("security", {})
     adoption = data.get("adoption", {})
     ai = data.get("ai")
-    sources = data.get("sources", [])
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    data.get("sources", [])
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     overall = score.get("overall_score")
     score_display = f"**{overall}/100**" if overall is not None else "**Insufficient Data**"

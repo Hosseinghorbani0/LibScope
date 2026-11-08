@@ -1,9 +1,9 @@
 """
 AI Subsystem Configuration for LibScope.
 """
-from dataclasses import dataclass, field
 import os
-from typing import Optional
+from dataclasses import dataclass
+
 from libscope.core.config import get_settings
 
 
@@ -12,7 +12,7 @@ class AIConfig:
     """Configuration container for askai-python integration."""
     provider: str = "openrouter"
     model: str = "openai/gpt-4o-mini"
-    api_key: Optional[str] = None
+    api_key: str | None = None
     timeout: float = 30.0
     retry_count: int = 2
     validation_retries: int = 2

@@ -74,4 +74,6 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B"]
-ignore = ["E501"]
+# E501: line-too-long (enforced by line-length setting)
+# B008: FastAPI uses Depends()/Query()/Argument() in function defaults by design
+ignore = ["E501", "B008"]

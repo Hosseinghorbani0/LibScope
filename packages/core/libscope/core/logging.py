@@ -4,7 +4,6 @@ Structured logging configuration with credential redaction.
 import logging
 import re
 import sys
-from typing import Any
 
 # Patterns to sanitize from log output
 REDACT_PATTERNS = [

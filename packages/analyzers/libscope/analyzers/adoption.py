@@ -2,10 +2,11 @@
 Adoption Discovery and Evidence Classification.
 Discovers and classifies verified real-world adoption of a package across independent repositories.
 """
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import re
-from typing import Any, Dict, List, Optional, Set
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
+
 from libscope.core.logging import get_logger
 
 logger = get_logger("analyzer.adoption")
@@ -39,25 +40,25 @@ class AdoptionEvidenceItem:
     source_repo_url: str
     file_path: str
     evidence_type: str
-    raw_match: Optional[str]
+    raw_match: str | None
     stars: int
     confidence_score: float
-    discovered_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    notes: Optional[str] = None
+    discovered_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    notes: str | None = None
 
 
 @dataclass
 class AdoptionDiscoveryResult:
     package_name: str
-    target_repo_full_name: Optional[str]
+    target_repo_full_name: str | None
     total_findings: int
     confirmed_dependencies_count: int
     confirmed_source_usage_count: int
     possible_usage_count: int
     mention_only_count: int
     unverified_count: int
-    findings: List[AdoptionEvidenceItem] = field(default_factory=list)
-    limitations: List[str] = field(default_factory=list)
+    findings: list[AdoptionEvidenceItem] = field(default_factory=list)
+    limitations: list[str] = field(default_factory=list)
 
 
 class AdoptionAnalyzer:
@@ -116,7 +117,7 @@ class AdoptionAnalyzer:
 
         # Dockerfile or CI configs
         if "dockerfile" in base_name or ".github/workflows" in lower_path:
-            if f"pip install" in content_lower and pkg_lower in content_lower:
+            if "pip install" in content_lower and pkg_lower in content_lower:
                 return CLASS_POSSIBLE_USAGE, 0.70
             return CLASS_POSSIBLE_USAGE, 0.50
 
@@ -125,8 +126,8 @@ class AdoptionAnalyzer:
     def process_raw_findings(
         self,
         package_name: str,
-        target_repo_full_name: Optional[str],
-        raw_items: List[Dict[str, Any]],
+        target_repo_full_name: str | None,
+        raw_items: list[dict[str, Any]],
     ) -> AdoptionDiscoveryResult:
         """
         Process, deduplicate, filter self-references, and classify raw search findings.
@@ -136,8 +137,8 @@ class AdoptionAnalyzer:
             "GitHub search API rate limits apply; results represent a verified sample rather than an exhaustive census.",
         ]
 
-        seen_repos: Set[str] = set()
-        findings: List[AdoptionEvidenceItem] = []
+        seen_repos: set[str] = set()
+        findings: list[AdoptionEvidenceItem] = []
         normalized_target = (target_repo_full_name or "").lower().strip()
 
         for item in raw_items:

@@ -1,15 +1,15 @@
 """
 Database connection, engine configuration, and session management.
 """
+from collections.abc import Generator
 from contextlib import contextmanager
-import os
 from pathlib import Path
-from typing import Generator
-from sqlalchemy import create_engine, event
-from sqlalchemy.orm import Session, sessionmaker
+
 from libscope.core.config import get_settings
 from libscope.core.logging import get_logger
 from libscope.core.models import Base
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import Session, sessionmaker
 
 logger = get_logger("database")
 

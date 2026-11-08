@@ -1,7 +1,8 @@
 """
 Security Intelligence Analysis Service powered by askai-python.
 """
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from libscope.ai.client import AskAIClient
 from libscope.ai.models import SecurityAssessmentOutput
 from libscope.ai.output_validator import AIOutputValidator
@@ -14,7 +15,7 @@ logger = get_logger("ai.service.security")
 class SecurityAnalysisService:
     """Synthesizes vulnerability reports and security posture."""
 
-    def __init__(self, client: Optional[AskAIClient] = None):
+    def __init__(self, client: AskAIClient | None = None):
         self.client = client or AskAIClient()
 
     async def analyze(
@@ -23,7 +24,7 @@ class SecurityAnalysisService:
         vulnerabilities_count: int,
         critical_high_count: int,
         has_security_policy: bool,
-        advisories: Optional[List[Dict[str, Any]]] = None,
+        advisories: list[dict[str, Any]] | None = None,
     ) -> SecurityAssessmentOutput:
         """
         Evaluate project security posture using askai-python or deterministic fallback.
@@ -37,7 +38,7 @@ class SecurityAnalysisService:
                 advisories=advisories,
             )
 
-        adv_lines: List[str] = []
+        adv_lines: list[str] = []
         for adv in (advisories or [])[:5]:
             adv_id = adv.get("id") or adv.get("cve_id", "Unknown ID")
             summary = adv.get("summary", "No details")[:100]
@@ -75,8 +76,8 @@ class SecurityAnalysisService:
         vulnerabilities_count: int,
         critical_high_count: int,
         has_security_policy: bool,
-        advisories: Optional[List[Dict[str, Any]]],
-        notice: Optional[str] = None,
+        advisories: list[dict[str, Any]] | None,
+        notice: str | None = None,
     ) -> SecurityAssessmentOutput:
         policy_status = "PUBLISHED (SECURITY.md present)" if has_security_policy else "ABSENT (No SECURITY.md discovered)"
 
@@ -99,7 +100,7 @@ class SecurityAnalysisService:
         if notice:
             summary = f"[{notice}] {summary}"
 
-        priority_fixes: List[str] = []
+        priority_fixes: list[str] = []
         if advisories:
             for adv in advisories[:3]:
                 adv_id = adv.get("id") or adv.get("cve_id", "Advisory")

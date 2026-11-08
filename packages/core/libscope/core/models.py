@@ -2,12 +2,11 @@
 Relational Database Models for LibScope using SQLAlchemy 2.x declarative style.
 Compatible with SQLite and PostgreSQL.
 """
-from datetime import datetime, timezone
-import json
-from typing import Any, List, Optional
+from datetime import UTC, datetime
+from typing import Optional
+
 from sqlalchemy import (
     Boolean,
-    Column,
     DateTime,
     Float,
     ForeignKey,
@@ -21,7 +20,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 def utc_now() -> datetime:
     """Return timezone-aware current UTC datetime."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Base(DeclarativeBase):
@@ -34,24 +33,24 @@ class Package(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     ecosystem: Mapped[str] = mapped_column(String(50), nullable=False, default="pypi", index=True)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    homepage: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
-    repository_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
-    license: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    latest_version: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    homepage: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    repository_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    license: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    latest_version: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     # Relationships
     repository: Mapped[Optional["Repository"]] = relationship("Repository", back_populates="package", uselist=False, cascade="all, delete-orphan")
-    releases: Mapped[List["Release"]] = relationship("Release", back_populates="package", cascade="all, delete-orphan")
-    snapshots: Mapped[List["MetricSnapshot"]] = relationship("MetricSnapshot", back_populates="package", cascade="all, delete-orphan")
-    adoption_evidence: Mapped[List["AdoptionEvidence"]] = relationship("AdoptionEvidence", back_populates="package", cascade="all, delete-orphan")
-    health_findings: Mapped[List["HealthFinding"]] = relationship("HealthFinding", back_populates="package", cascade="all, delete-orphan")
-    security_findings: Mapped[List["SecurityFinding"]] = relationship("SecurityFinding", back_populates="package", cascade="all, delete-orphan")
-    scores: Mapped[List["Score"]] = relationship("Score", back_populates="package", cascade="all, delete-orphan")
-    ai_analyses: Mapped[List["AIAnalysis"]] = relationship("AIAnalysis", back_populates="package", cascade="all, delete-orphan")
-    reports: Mapped[List["Report"]] = relationship("Report", back_populates="package", cascade="all, delete-orphan")
+    releases: Mapped[list["Release"]] = relationship("Release", back_populates="package", cascade="all, delete-orphan")
+    snapshots: Mapped[list["MetricSnapshot"]] = relationship("MetricSnapshot", back_populates="package", cascade="all, delete-orphan")
+    adoption_evidence: Mapped[list["AdoptionEvidence"]] = relationship("AdoptionEvidence", back_populates="package", cascade="all, delete-orphan")
+    health_findings: Mapped[list["HealthFinding"]] = relationship("HealthFinding", back_populates="package", cascade="all, delete-orphan")
+    security_findings: Mapped[list["SecurityFinding"]] = relationship("SecurityFinding", back_populates="package", cascade="all, delete-orphan")
+    scores: Mapped[list["Score"]] = relationship("Score", back_populates="package", cascade="all, delete-orphan")
+    ai_analyses: Mapped[list["AIAnalysis"]] = relationship("AIAnalysis", back_populates="package", cascade="all, delete-orphan")
+    reports: Mapped[list["Report"]] = relationship("Report", back_populates="package", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("ix_packages_name_ecosystem", "name", "ecosystem", unique=True),
@@ -75,9 +74,9 @@ class Repository(Base):
     default_branch: Mapped[str] = mapped_column(String(100), default="main")
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     is_fork: Mapped[bool] = mapped_column(Boolean, default=False)
-    license: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    last_commit_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    last_release_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    license: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_commit_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_release_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
@@ -90,10 +89,10 @@ class Release(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     package_id: Mapped[int] = mapped_column(Integer, ForeignKey("packages.id", ondelete="CASCADE"), nullable=False)
     version: Mapped[str] = mapped_column(String(100), nullable=False)
-    release_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    release_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_yanked: Mapped[bool] = mapped_column(Boolean, default=False)
-    download_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
-    sha256: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    download_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     package: Mapped["Package"] = relationship("Package", back_populates="releases")
 
@@ -110,11 +109,11 @@ class MetricSnapshot(Base):
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
     period: Mapped[str] = mapped_column(String(50), default="daily")  # daily, weekly, monthly, cumulative
     downloads_count: Mapped[int] = mapped_column(Integer, default=0)
-    growth_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    stars_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    forks_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    issues_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    raw_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON-encoded raw observation
+    growth_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    stars_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    forks_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    issues_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    raw_data: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON-encoded raw observation
 
     package: Mapped["Package"] = relationship("Package", back_populates="snapshots")
 
@@ -134,7 +133,7 @@ class AdoptionEvidence(Base):
     # 4. Mention only
     # 5. Unverified
     evidence_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    raw_match: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    raw_match: Mapped[str | None] = mapped_column(Text, nullable=True)
     discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     stars: Mapped[int] = mapped_column(Integer, default=0)
     confidence_score: Mapped[float] = mapped_column(Float, default=0.5)
@@ -157,7 +156,7 @@ class HealthFinding(Base):
     # Status: pass, warning, fail, missing
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     message: Mapped[str] = mapped_column(String(512), nullable=False)
-    details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON-encoded extra detail
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON-encoded extra detail
     detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     package: Mapped["Package"] = relationship("Package", back_populates="health_findings")
@@ -171,13 +170,13 @@ class SecurityFinding(Base):
     identifier: Mapped[str] = mapped_column(String(100), nullable=False, index=True)  # CVE or GHSA or OSV ID
     # Severity: CRITICAL, HIGH, MEDIUM, LOW
     severity: Mapped[str] = mapped_column(String(50), nullable=False, default="MEDIUM")
-    affected_range: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    fixed_in: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    affected_range: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    fixed_in: Mapped[str | None] = mapped_column(String(100), nullable=True)
     source: Mapped[str] = mapped_column(String(100), default="OSV")
-    reference_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
-    title: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
-    details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    remediation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reference_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    title: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    remediation: Mapped[str | None] = mapped_column(Text, nullable=True)
     detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     package: Mapped["Package"] = relationship("Package", back_populates="security_findings")
@@ -190,18 +189,18 @@ class Score(Base):
     package_id: Mapped[int] = mapped_column(Integer, ForeignKey("packages.id", ondelete="CASCADE"), nullable=False)
     version: Mapped[str] = mapped_column(String(50), default="v1.0.0")
     calculated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
-    overall_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # 0 to 100, None if insufficient
+    overall_score: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0 to 100, None if insufficient
     # Confidence: high, medium, low
     confidence_level: Mapped[str] = mapped_column(String(50), default="medium")
-    popularity_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    growth_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    adoption_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    maintenance_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    documentation_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    quality_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    security_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    breakdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON-encoded
-    explanation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    popularity_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    growth_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    adoption_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    maintenance_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    documentation_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    quality_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    security_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    breakdown: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON-encoded
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     package: Mapped["Package"] = relationship("Package", back_populates="scores")
 
@@ -210,17 +209,17 @@ class AnalysisJob(Base):
     __tablename__ = "analysis_jobs"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    package_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("packages.id", ondelete="SET NULL"), nullable=True)
+    package_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("packages.id", ondelete="SET NULL"), nullable=True)
     package_name: Mapped[str] = mapped_column(String(255), nullable=False)
     ecosystem: Mapped[str] = mapped_column(String(50), default="pypi")
     # Status: queued, running, completed, failed, cancelled
     status: Mapped[str] = mapped_column(String(50), default="queued", index=True)
     progress: Mapped[int] = mapped_column(Integer, default=0)
     step_message: Mapped[str] = mapped_column(String(255), default="Job queued")
-    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
-    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Report(Base):
@@ -242,12 +241,12 @@ class AIAnalysis(Base):
     package_id: Mapped[int] = mapped_column(Integer, ForeignKey("packages.id", ondelete="CASCADE"), nullable=False)
     provider: Mapped[str] = mapped_column(String(100), default="openrouter")
     model: Mapped[str] = mapped_column(String(100), default="gpt-4o-mini")
-    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    risks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    opportunities: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    maintainer_recommendations: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    competitive_position: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    raw_response: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    risks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    opportunities: Mapped[str | None] = mapped_column(Text, nullable=True)
+    maintainer_recommendations: Mapped[str | None] = mapped_column(Text, nullable=True)
+    competitive_position: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_response: Mapped[str | None] = mapped_column(Text, nullable=True)
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     package: Mapped["Package"] = relationship("Package", back_populates="ai_analyses")
@@ -261,6 +260,6 @@ class CollectionRun(Base):
     source_name: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[str] = mapped_column(String(50), default="success")
     items_collected: Mapped[int] = mapped_column(Integer, default=0)
-    errors: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    errors: Mapped[str | None] = mapped_column(Text, nullable=True)
     run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 

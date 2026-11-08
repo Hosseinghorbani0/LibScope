@@ -1,18 +1,18 @@
 """
 JSON Report Formatter for LibScope Intelligence.
 """
-from datetime import datetime, timezone
 import json
-from typing import Any, Dict
+from datetime import UTC, datetime
+from typing import Any
 
 
-def generate_json_report(data: Dict[str, Any]) -> str:
+def generate_json_report(data: dict[str, Any]) -> str:
     """Generate structured JSON report representation."""
     report_dict = {
         "report_metadata": {
             "generator": "LibScope Software Intelligence Platform",
             "version": "0.1.0",
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
             "format": "json",
         },
         "intelligence": data,

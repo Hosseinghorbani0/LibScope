@@ -2,9 +2,8 @@
 Isolated Sample Demo Data for LibScope.
 Enables immediate interactive evaluation of the platform and dashboard without requiring live network access.
 """
-from datetime import datetime, timezone
-import json
-from typing import Any, Dict, List
+from datetime import UTC, datetime
+
 from libscope.core.database import db_session
 from libscope.core.logging import get_logger
 from libscope.core.models import (
@@ -15,7 +14,6 @@ from libscope.core.models import (
     Package,
     Repository,
     Score,
-    SecurityFinding,
 )
 
 logger = get_logger("api.demo")
@@ -86,9 +84,9 @@ DEMO_PACKAGES = [
 ]
 
 
-def seed_demo_data() -> List[int]:
+def seed_demo_data() -> list[int]:
     """Seed pre-packaged demonstration data for offline testing and presentations."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     created_ids = []
 
     with db_session() as session:

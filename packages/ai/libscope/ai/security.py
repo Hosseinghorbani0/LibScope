@@ -3,8 +3,6 @@ AI Security Controls and Prompt Injection Defenses.
 Sanitizes external package metadata, issues, and documentation before sending to LLM.
 """
 import re
-from typing import Optional
-
 
 # Patterns often used in prompt injection attempts in READMEs or package descriptions
 INJECTION_PATTERNS = [
@@ -17,7 +15,7 @@ INJECTION_PATTERNS = [
 ]
 
 
-def sanitize_untrusted_text(raw_text: Optional[str], max_length: int = 3000) -> str:
+def sanitize_untrusted_text(raw_text: str | None, max_length: int = 3000) -> str:
     """
     Sanitize untrusted text (such as READMEs, descriptions, keywords, user comments):
     1. Truncate to maximum bounded length.

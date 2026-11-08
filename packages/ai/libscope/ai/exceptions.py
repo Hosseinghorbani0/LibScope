@@ -2,7 +2,6 @@
 LibScope AI Exception Hierarchy.
 Normalizes askai-python exceptions to clean internal domain errors.
 """
-from typing import Optional
 
 
 class LibScopeAIError(Exception):
@@ -22,7 +21,7 @@ class LibScopeAIAuthenticationError(LibScopeAIConfigError):
 
 class LibScopeAIProviderError(LibScopeAIError):
     """Raised when an external AI provider fails or times out."""
-    def __init__(self, message: str, provider: Optional[str] = None, original_error: Optional[Exception] = None):
+    def __init__(self, message: str, provider: str | None = None, original_error: Exception | None = None):
         super().__init__(message)
         self.provider = provider
         self.original_error = original_error

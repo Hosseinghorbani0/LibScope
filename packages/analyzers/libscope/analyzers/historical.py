@@ -3,8 +3,9 @@ Historical Intelligence Analyzer.
 Analyzes snapshot deltas across days, weeks, and months, tracking adoption growth and metric changes.
 """
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
+
 from libscope.core.logging import get_logger
 
 logger = get_logger("analyzer.historical")
@@ -16,10 +17,10 @@ class SnapshotDelta:
     previous_date: datetime
     current_date: datetime
     downloads_delta: int
-    downloads_delta_pct: Optional[float]
+    downloads_delta_pct: float | None
     stars_delta: int
     forks_delta: int
-    score_delta: Optional[float]
+    score_delta: float | None
     new_adoptions_count: int
     new_vulnerabilities_count: int
 
@@ -29,8 +30,8 @@ class HistoricalAnalysisResult:
     package_name: str
     analyzed_at: datetime
     total_snapshots_recorded: int
-    deltas: List[SnapshotDelta] = field(default_factory=list)
-    historical_chart_points: List[Dict[str, Any]] = field(default_factory=list)
+    deltas: list[SnapshotDelta] = field(default_factory=list)
+    historical_chart_points: list[dict[str, Any]] = field(default_factory=list)
     summary: str = ""
 
 
@@ -40,10 +41,10 @@ class HistoricalAnalyzer:
     def analyze_snapshots(
         self,
         package_name: str,
-        snapshots: List[Dict[str, Any]],
-        scores: Optional[List[Dict[str, Any]]] = None,
+        snapshots: list[dict[str, Any]],
+        scores: list[dict[str, Any]] | None = None,
     ) -> HistoricalAnalysisResult:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if not snapshots:
             return HistoricalAnalysisResult(
                 package_name=package_name,
@@ -63,7 +64,7 @@ class HistoricalAnalyzer:
                 "forks": s.get("forks_count", 0),
             })
 
-        deltas: List[SnapshotDelta] = []
+        deltas: list[SnapshotDelta] = []
         if len(sorted_snaps) >= 2:
             latest = sorted_snaps[-1]
             prev = sorted_snaps[-2]

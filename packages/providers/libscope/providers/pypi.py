@@ -2,9 +2,10 @@
 PyPI Package Provider implementation.
 Queries PyPI JSON API and pypistats API.
 """
-from datetime import datetime, timezone
 import re
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
+
 import httpx
 from libscope.core.logging import get_logger
 from libscope.core.security import create_safe_httpx_client
@@ -23,7 +24,7 @@ logger = get_logger("provider.pypi")
 class PyPIProvider(BaseProvider):
     """Ecosystem provider for Python Package Index (PyPI)."""
 
-    def __init__(self, client: Optional[httpx.AsyncClient] = None):
+    def __init__(self, client: httpx.AsyncClient | None = None):
         self._client = client
 
     @property
@@ -31,11 +32,11 @@ class PyPIProvider(BaseProvider):
         return "pypi"
 
     @property
-    def supported_ecosystems(self) -> List[str]:
+    def supported_ecosystems(self) -> list[str]:
         return ["pypi", "python"]
 
     @property
-    def capabilities(self) -> Dict[str, bool]:
+    def capabilities(self) -> dict[str, bool]:
         return {
             "metadata": True,
             "releases": True,
@@ -52,14 +53,14 @@ class PyPIProvider(BaseProvider):
             self._client = create_safe_httpx_client()
         return self._client
 
-    def _extract_github_url(self, info: Dict[str, Any]) -> Optional[str]:
+    def _extract_github_url(self, info: dict[str, Any]) -> str | None:
         """Extract GitHub repository URL from project_urls or home_page."""
-        urls: List[str] = []
+        urls: list[str] = []
         if info.get("home_page"):
             urls.append(info["home_page"])
 
         project_urls = info.get("project_urls") or {}
-        for key, val in project_urls.items():
+        for _key, val in project_urls.items():
             if val:
                 urls.append(val)
 
@@ -128,7 +129,7 @@ class PyPIProvider(BaseProvider):
             ),
         )
 
-    async def fetch_releases(self, name: str) -> List[NormalizedRelease]:
+    async def fetch_releases(self, name: str) -> list[NormalizedRelease]:
         clean_name = name.strip().lower()
         url = f"https://pypi.org/pypi/{clean_name}/json"
         client = await self._get_client()
@@ -144,7 +145,7 @@ class PyPIProvider(BaseProvider):
             return []
 
         raw_releases = data.get("releases", {})
-        results: List[NormalizedRelease] = []
+        results: list[NormalizedRelease] = []
 
         for ver, dists in raw_releases.items():
             release_date = None
@@ -179,7 +180,7 @@ class PyPIProvider(BaseProvider):
 
         # Sort chronologically if dates exist, newest first
         results.sort(
-            key=lambda r: r.release_date or datetime.min.replace(tzinfo=timezone.utc),
+            key=lambda r: r.release_date or datetime.min.replace(tzinfo=UTC),
             reverse=True,
         )
         return results
@@ -190,7 +191,7 @@ class PyPIProvider(BaseProvider):
         client = await self._get_client()
 
         daily, weekly, monthly = 0, 0, 0
-        historical: Dict[str, int] = {}
+        historical: dict[str, int] = {}
         provenance_notes = "pypistats recent API"
 
         # 1. Recent downloads
@@ -238,7 +239,7 @@ class PyPIProvider(BaseProvider):
             ),
         )
 
-    async def fetch_dependencies(self, name: str, version: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def fetch_dependencies(self, name: str, version: str | None = None) -> list[dict[str, Any]]:
         clean_name = name.strip().lower()
         url = f"https://pypi.org/pypi/{clean_name}/json"
         client = await self._get_client()

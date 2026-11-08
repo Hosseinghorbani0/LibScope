@@ -1,7 +1,7 @@
 """
 Repository Intelligence Analysis Service powered by askai-python.
 """
-from typing import Optional
+
 from libscope.ai.client import AskAIClient
 from libscope.ai.models import HealthAssessmentOutput
 from libscope.ai.services.health_service import HealthAnalysisService
@@ -13,7 +13,7 @@ logger = get_logger("ai.service.repository")
 class RepositoryAnalysisService:
     """Provides repository-level software intelligence and analysis."""
 
-    def __init__(self, client: Optional[AskAIClient] = None):
+    def __init__(self, client: AskAIClient | None = None):
         self.client = client or AskAIClient()
         self._health_service = HealthAnalysisService(client=self.client)
 
@@ -24,10 +24,10 @@ class RepositoryAnalysisService:
         forks: int,
         watchers: int,
         open_issues: int,
-        days_since_commit: Optional[int],
-        days_since_release: Optional[int],
+        days_since_commit: int | None,
+        days_since_release: int | None,
         has_readme: bool,
-        license_str: Optional[str],
+        license_str: str | None,
         has_contributing: bool,
         has_security_md: bool,
         has_ci: bool,

@@ -2,10 +2,11 @@
 Downloads and Package Trend Analytics.
 Calculates moving averages, growth rates, spike detection, and release correlation.
 """
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import math
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
+
 from libscope.core.logging import get_logger
 from libscope.providers.base import NormalizedDownloads, NormalizedRelease
 
@@ -33,13 +34,13 @@ class DownloadAnalyticsResult:
     monthly_downloads: int
     is_missing_data: bool
     mirror_inclusive: bool
-    growth_rate_pct: Optional[float]  # e.g. weekly growth
-    moving_average_7d: Optional[float]
-    moving_average_30d: Optional[float]
-    anomalies: List[AnomalyDetection] = field(default_factory=list)
+    growth_rate_pct: float | None  # e.g. weekly growth
+    moving_average_7d: float | None
+    moving_average_30d: float | None
+    anomalies: list[AnomalyDetection] = field(default_factory=list)
     recent_trend_direction: str = "stable"  # "growing", "stable", "declining", "insufficient_data"
-    release_impact: List[Dict[str, Any]] = field(default_factory=list)
-    caveats: List[str] = field(default_factory=list)
+    release_impact: list[dict[str, Any]] = field(default_factory=list)
+    caveats: list[str] = field(default_factory=list)
 
 
 class DownloadsAnalyzer:
@@ -48,9 +49,9 @@ class DownloadsAnalyzer:
     def analyze(
         self,
         downloads: NormalizedDownloads,
-        releases: Optional[List[NormalizedRelease]] = None,
+        releases: list[NormalizedRelease] | None = None,
     ) -> DownloadAnalyticsResult:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         caveats = [
             "Downloads reflect automated CI/CD mirrors, bots, and repeated installations; they do not equal unique active users."
         ]
@@ -115,14 +116,14 @@ class DownloadsAnalyzer:
                 growth_rate = est_growth
 
         # Anomaly detection (Z-score on daily observations, threshold 2.5 std devs)
-        anomalies: List[AnomalyDetection] = []
+        anomalies: list[AnomalyDetection] = []
         if len(values) >= 14:
             mean_val = sum(values) / float(len(values))
             variance = sum((x - mean_val) ** 2 for x in values) / float(len(values))
             std_dev = math.sqrt(variance)
 
             if std_dev > 0.0:
-                for d, val in zip(sorted_dates, values):
+                for d, val in zip(sorted_dates, values, strict=False):
                     z = (val - mean_val) / std_dev
                     if z > 2.5:
                         anomalies.append(

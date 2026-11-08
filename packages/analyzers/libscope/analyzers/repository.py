@@ -3,8 +3,8 @@ Repository Intelligence Analyzer.
 Analyzes commit cadence, release frequency, issues responsiveness, and repository health.
 """
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import UTC, datetime
+
 from libscope.core.logging import get_logger
 from libscope.providers.base import NormalizedRelease, NormalizedRepository
 
@@ -23,13 +23,13 @@ class RepositoryIntelligenceResult:
     open_issues: int
     is_archived: bool
     is_fork: bool
-    license_spdx: Optional[str]
-    days_since_last_commit: Optional[int]
-    days_since_last_release: Optional[int]
-    release_cadence_days_avg: Optional[float]
+    license_spdx: str | None
+    days_since_last_commit: int | None
+    days_since_last_release: int | None
+    release_cadence_days_avg: float | None
     activity_status: str  # "very_active", "active", "stale", "dormant", "archived"
-    insights: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
+    insights: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 class RepositoryAnalyzer:
@@ -38,11 +38,11 @@ class RepositoryAnalyzer:
     def analyze(
         self,
         repo: NormalizedRepository,
-        releases: Optional[List[NormalizedRelease]] = None,
+        releases: list[NormalizedRelease] | None = None,
     ) -> RepositoryIntelligenceResult:
-        now = datetime.now(timezone.utc)
-        insights: List[str] = []
-        warnings: List[str] = []
+        now = datetime.now(UTC)
+        insights: list[str] = []
+        warnings: list[str] = []
 
         # 1. Archival status
         if repo.is_archived:

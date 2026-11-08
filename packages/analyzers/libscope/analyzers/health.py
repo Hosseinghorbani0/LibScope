@@ -3,9 +3,9 @@ Project Health Analyzer.
 Evaluates repository hygiene, documentation quality, CI/CD, tests, license, and maintainer signals.
 """
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-import json
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
+
 from libscope.core.logging import get_logger
 from libscope.providers.base import NormalizedMetadata, NormalizedRelease, NormalizedRepository
 
@@ -18,7 +18,7 @@ class HealthCheckResult:
     check_name: str
     status: str  # pass, warning, fail, missing
     message: str
-    details: Optional[Dict[str, Any]] = None
+    details: dict[str, Any] | None = None
 
 
 @dataclass
@@ -26,10 +26,10 @@ class ProjectHealthReport:
     package_name: str
     evaluated_at: datetime
     overall_health_rating: str  # "excellent", "healthy", "needs_attention", "at_risk", "insufficient_data"
-    findings: List[HealthCheckResult] = field(default_factory=list)
-    missing_information: List[str] = field(default_factory=list)
-    strengths: List[str] = field(default_factory=list)
-    risks: List[str] = field(default_factory=list)
+    findings: list[HealthCheckResult] = field(default_factory=list)
+    missing_information: list[str] = field(default_factory=list)
+    strengths: list[str] = field(default_factory=list)
+    risks: list[str] = field(default_factory=list)
 
 
 class HealthAnalyzer:
@@ -38,15 +38,15 @@ class HealthAnalyzer:
     def analyze(
         self,
         metadata: NormalizedMetadata,
-        repo: Optional[NormalizedRepository] = None,
-        releases: Optional[List[NormalizedRelease]] = None,
-        community_profile: Optional[Dict[str, Any]] = None,
+        repo: NormalizedRepository | None = None,
+        releases: list[NormalizedRelease] | None = None,
+        community_profile: dict[str, Any] | None = None,
     ) -> ProjectHealthReport:
-        now = datetime.now(timezone.utc)
-        findings: List[HealthCheckResult] = []
-        missing_info: List[str] = []
-        strengths: List[str] = []
-        risks: List[str] = []
+        now = datetime.now(UTC)
+        findings: list[HealthCheckResult] = []
+        missing_info: list[str] = []
+        strengths: list[str] = []
+        risks: list[str] = []
 
         # 1. License Check
         license_str = repo.license if repo and repo.license else metadata.license
@@ -194,6 +194,26 @@ class HealthAnalyzer:
                         check_name="missing_security_policy",
                         status="missing",
                         message="No dedicated SECURITY.md policy found.",
+                    )
+                )
+
+            if has_code_of_conduct:
+                findings.append(
+                    HealthCheckResult(
+                        category="community",
+                        check_name="code_of_conduct_present",
+                        status="pass",
+                        message="Code of Conduct file is present.",
+                    )
+                )
+                strengths.append("Code of Conduct published")
+            else:
+                findings.append(
+                    HealthCheckResult(
+                        category="community",
+                        check_name="missing_code_of_conduct",
+                        status="missing",
+                        message="No Code of Conduct file found.",
                     )
                 )
 

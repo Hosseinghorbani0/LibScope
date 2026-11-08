@@ -1,7 +1,7 @@
 """
 Maintainer Recommendations Service powered by askai-python.
 """
-from typing import List, Optional
+
 from libscope.ai.client import AskAIClient
 from libscope.ai.models import MaintainerRecommendationsOutput
 from libscope.ai.output_validator import AIOutputValidator
@@ -14,21 +14,21 @@ logger = get_logger("ai.service.recommendations")
 class MaintainerRecommendationsService:
     """Produces prioritized, actionable guidance for project maintainers."""
 
-    def __init__(self, client: Optional[AskAIClient] = None):
+    def __init__(self, client: AskAIClient | None = None):
         self.client = client or AskAIClient()
 
     async def generate_recommendations(
         self,
         name: str,
-        score: Optional[float],
+        score: float | None,
         confidence: str,
-        health_score: Optional[float] = None,
-        maintenance_score: Optional[float] = None,
-        security_score: Optional[float] = None,
-        adoption_score: Optional[float] = None,
-        hygiene_gaps: Optional[List[str]] = None,
-        days_since_commit: Optional[int] = None,
-        days_since_release: Optional[int] = None,
+        health_score: float | None = None,
+        maintenance_score: float | None = None,
+        security_score: float | None = None,
+        adoption_score: float | None = None,
+        hygiene_gaps: list[str] | None = None,
+        days_since_commit: int | None = None,
+        days_since_release: int | None = None,
         vulnerabilities_count: int = 0,
     ) -> MaintainerRecommendationsOutput:
         """
@@ -77,13 +77,13 @@ class MaintainerRecommendationsService:
         self,
         name: str,
         vulnerabilities_count: int,
-        hygiene_gaps: List[str],
-        days_since_release: Optional[int],
-        notice: Optional[str] = None,
+        hygiene_gaps: list[str],
+        days_since_release: int | None,
+        notice: str | None = None,
     ) -> MaintainerRecommendationsOutput:
-        immediate: List[str] = []
-        medium: List[str] = []
-        community: List[str] = []
+        immediate: list[str] = []
+        medium: list[str] = []
+        community: list[str] = []
 
         if notice:
             immediate.append(f"[{notice}]")

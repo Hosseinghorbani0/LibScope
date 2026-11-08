@@ -2,13 +2,13 @@
 AI Analyst Orchestrator and Interpreter.
 Coordinates deterministic evidence formatting, sanitization, and structured interpretation.
 """
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import json
-from typing import Any, Dict, Optional
-from libscope.core.logging import get_logger
+from dataclasses import dataclass
+from datetime import UTC, datetime
+
 from libscope.ai.client import AskAIClient
 from libscope.ai.services.package_service import PackageAnalysisService
+from libscope.core.logging import get_logger
 
 logger = get_logger("ai.interpreter")
 
@@ -31,7 +31,7 @@ class AIAnalysisResult:
 class AIInterpreter:
     """Orchestrates structured intelligence synthesis."""
 
-    def __init__(self, client: Optional[AskAIClient] = None, service: Optional[PackageAnalysisService] = None):
+    def __init__(self, client: AskAIClient | None = None, service: PackageAnalysisService | None = None):
         self.client = client or AskAIClient()
         self.service = service or PackageAnalysisService(client=self.client)
 
@@ -39,10 +39,10 @@ class AIInterpreter:
         self,
         package_name: str,
         ecosystem: str,
-        latest_version: Optional[str],
-        license_str: Optional[str],
-        repo_url: Optional[str],
-        overall_score: Optional[float],
+        latest_version: str | None,
+        license_str: str | None,
+        repo_url: str | None,
+        overall_score: float | None,
         confidence_level: str,
         dimension_breakdown: str,
         monthly_downloads: int,
@@ -51,14 +51,14 @@ class AIInterpreter:
         stars: int,
         forks: int,
         open_issues: int,
-        days_since_commit: Optional[int],
-        days_since_release: Optional[int],
+        days_since_commit: int | None,
+        days_since_release: int | None,
         verified_adoptions_count: int,
         vulnerabilities_count: int,
         critical_high_count: int,
-        raw_description: Optional[str],
+        raw_description: str | None,
     ) -> AIAnalysisResult:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         pkg_output = await self.service.analyze(
             name=package_name,

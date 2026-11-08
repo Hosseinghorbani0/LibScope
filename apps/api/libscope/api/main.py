@@ -1,24 +1,21 @@
 """
 FastAPI REST API Application for LibScope.
 """
-import asyncio
-from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 import json
-from typing import Any, Dict, List, Optional
 import uuid
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from pathlib import Path
+
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from pathlib import Path
-from sqlalchemy import desc
-from sqlalchemy.orm import Session
 from libscope.analyzers.competitor import CompetitorAnalyzer
 from libscope.api.demo import seed_demo_data
 from libscope.api.orchestrator import run_package_analysis
 from libscope.core.config import get_settings
-from libscope.core.database import db_session, get_db, init_db
+from libscope.core.database import get_db, init_db
 from libscope.core.logging import get_logger, setup_logging
 from libscope.core.models import (
     AdoptionEvidence,
@@ -29,7 +26,6 @@ from libscope.core.models import (
     Package,
     Release,
     Report,
-    Repository,
     Score,
     SecurityFinding,
 )
@@ -52,6 +48,8 @@ from libscope.core.schemas import (
 )
 from libscope.providers.registry import get_provider_registry
 from libscope.reporting.generator import ReportGenerator
+from sqlalchemy import desc
+from sqlalchemy.orm import Session
 
 settings = get_settings()
 setup_logging(level=settings.log_level)
@@ -92,7 +90,7 @@ def health_check():
         "service": "libscope-api",
         "version": settings.app_version,
         "environment": settings.environment,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
 
@@ -164,10 +162,10 @@ def get_job_status(job_id: str, db: Session = Depends(get_db)):
 
 
 # --- Package Intelligence ---
-@app.get("/api/v1/packages", response_model=List[PackageRead], tags=["Packages"])
+@app.get("/api/v1/packages", response_model=list[PackageRead], tags=["Packages"])
 def list_packages(
-    search: Optional[str] = None,
-    ecosystem: Optional[str] = None,
+    search: str | None = None,
+    ecosystem: str | None = None,
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
@@ -216,7 +214,7 @@ def get_package_detail(package_id: int, db: Session = Depends(get_db)):
     )
 
 
-@app.get("/api/v1/packages/{package_id}/analytics", response_model=List[MetricSnapshotRead], tags=["Analytics"])
+@app.get("/api/v1/packages/{package_id}/analytics", response_model=list[MetricSnapshotRead], tags=["Analytics"])
 def get_package_analytics(package_id: int, db: Session = Depends(get_db)):
     pkg = db.query(Package).filter_by(id=package_id).first()
     if not pkg:
@@ -224,7 +222,7 @@ def get_package_analytics(package_id: int, db: Session = Depends(get_db)):
     return db.query(MetricSnapshot).filter_by(package_id=package_id).order_by(MetricSnapshot.recorded_at).all()
 
 
-@app.get("/api/v1/packages/{package_id}/health", response_model=List[HealthFindingRead], tags=["Health"])
+@app.get("/api/v1/packages/{package_id}/health", response_model=list[HealthFindingRead], tags=["Health"])
 def get_package_health(package_id: int, db: Session = Depends(get_db)):
     pkg = db.query(Package).filter_by(id=package_id).first()
     if not pkg:
@@ -232,7 +230,7 @@ def get_package_health(package_id: int, db: Session = Depends(get_db)):
     return db.query(HealthFinding).filter_by(package_id=package_id).all()
 
 
-@app.get("/api/v1/packages/{package_id}/adoption", response_model=List[AdoptionEvidenceRead], tags=["Adoption"])
+@app.get("/api/v1/packages/{package_id}/adoption", response_model=list[AdoptionEvidenceRead], tags=["Adoption"])
 def get_package_adoption(package_id: int, db: Session = Depends(get_db)):
     pkg = db.query(Package).filter_by(id=package_id).first()
     if not pkg:
@@ -240,7 +238,7 @@ def get_package_adoption(package_id: int, db: Session = Depends(get_db)):
     return db.query(AdoptionEvidence).filter_by(package_id=package_id).order_by(desc(AdoptionEvidence.stars)).all()
 
 
-@app.get("/api/v1/packages/{package_id}/security", response_model=List[SecurityFindingRead], tags=["Security"])
+@app.get("/api/v1/packages/{package_id}/security", response_model=list[SecurityFindingRead], tags=["Security"])
 def get_package_security(package_id: int, db: Session = Depends(get_db)):
     pkg = db.query(Package).filter_by(id=package_id).first()
     if not pkg:
@@ -248,7 +246,7 @@ def get_package_security(package_id: int, db: Session = Depends(get_db)):
     return db.query(SecurityFinding).filter_by(package_id=package_id).all()
 
 
-@app.get("/api/v1/packages/{package_id}/releases", response_model=List[ReleaseRead], tags=["Releases"])
+@app.get("/api/v1/packages/{package_id}/releases", response_model=list[ReleaseRead], tags=["Releases"])
 def get_package_releases(package_id: int, db: Session = Depends(get_db)):
     pkg = db.query(Package).filter_by(id=package_id).first()
     if not pkg:
@@ -256,7 +254,7 @@ def get_package_releases(package_id: int, db: Session = Depends(get_db)):
     return db.query(Release).filter_by(package_id=package_id).order_by(desc(Release.release_date)).all()
 
 
-@app.get("/api/v1/packages/{package_id}/score", response_model=Optional[ScoreRead], tags=["Scoring"])
+@app.get("/api/v1/packages/{package_id}/score", response_model=ScoreRead | None, tags=["Scoring"])
 def get_package_score(package_id: int, db: Session = Depends(get_db)):
     pkg = db.query(Package).filter_by(id=package_id).first()
     if not pkg:
@@ -264,7 +262,7 @@ def get_package_score(package_id: int, db: Session = Depends(get_db)):
     return db.query(Score).filter_by(package_id=package_id).order_by(desc(Score.calculated_at)).first()
 
 
-@app.get("/api/v1/packages/{package_id}/ai", response_model=Optional[AIAnalysisRead], tags=["AI"])
+@app.get("/api/v1/packages/{package_id}/ai", response_model=AIAnalysisRead | None, tags=["AI"])
 def get_package_ai_analysis(package_id: int, db: Session = Depends(get_db)):
     pkg = db.query(Package).filter_by(id=package_id).first()
     if not pkg:
@@ -275,7 +273,7 @@ def get_package_ai_analysis(package_id: int, db: Session = Depends(get_db)):
 # --- Competitor Comparison ---
 @app.post("/api/v1/compare", response_model=CompareResponse, tags=["Comparison"])
 def compare_packages(req: CompareRequest, db: Session = Depends(get_db)):
-    packages: List[Package] = []
+    packages: list[Package] = []
     if req.package_ids:
         packages = db.query(Package).filter(Package.id.in_(req.package_ids)).all()
     elif req.package_names:

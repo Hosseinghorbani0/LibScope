@@ -1,7 +1,8 @@
 """
 Competitor Package Comparison Analysis Service powered by askai-python.
 """
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from libscope.ai.client import AskAIClient
 from libscope.ai.models import CompetitorComparisonOutput
 from libscope.ai.output_validator import AIOutputValidator
@@ -14,12 +15,12 @@ logger = get_logger("ai.service.competitor")
 class CompetitorAnalysisService:
     """Produces multi-package comparative intelligence."""
 
-    def __init__(self, client: Optional[AskAIClient] = None):
+    def __init__(self, client: AskAIClient | None = None):
         self.client = client or AskAIClient()
 
     async def compare(
         self,
-        comparison_records: List[Dict[str, Any]],
+        comparison_records: list[dict[str, Any]],
     ) -> CompetitorComparisonOutput:
         """
         Compare packages using askai-python or deterministic fallback.
@@ -27,7 +28,7 @@ class CompetitorAnalysisService:
         if not self.client.is_available:
             return self._build_deterministic_fallback(comparison_records)
 
-        lines: List[str] = []
+        lines: list[str] = []
         for r in comparison_records:
             name = r.get("name", "Unknown")
             score = r.get("score", "N/A")
@@ -54,8 +55,8 @@ class CompetitorAnalysisService:
 
     def _build_deterministic_fallback(
         self,
-        comparison_records: List[Dict[str, Any]],
-        notice: Optional[str] = None,
+        comparison_records: list[dict[str, Any]],
+        notice: str | None = None,
     ) -> CompetitorComparisonOutput:
         if not comparison_records:
             return CompetitorComparisonOutput(

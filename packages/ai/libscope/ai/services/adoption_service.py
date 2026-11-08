@@ -1,7 +1,7 @@
 """
 Adoption Intelligence Analysis Service powered by askai-python.
 """
-from typing import List, Optional
+
 from libscope.ai.client import AskAIClient
 from libscope.ai.models import AdoptionAssessmentOutput
 from libscope.ai.output_validator import AIOutputValidator
@@ -14,7 +14,7 @@ logger = get_logger("ai.service.adoption")
 class AdoptionAnalysisService:
     """Interprets real-world code adoption evidence and separates genuine usage from automated CI mirrors."""
 
-    def __init__(self, client: Optional[AskAIClient] = None):
+    def __init__(self, client: AskAIClient | None = None):
         self.client = client or AskAIClient()
 
     async def analyze(
@@ -23,8 +23,8 @@ class AdoptionAnalysisService:
         ecosystem: str,
         monthly_downloads: int,
         verified_adoptions: int,
-        sample_adopters: Optional[List[str]] = None,
-        category: Optional[str] = None,
+        sample_adopters: list[str] | None = None,
+        category: str | None = None,
     ) -> AdoptionAssessmentOutput:
         """
         Synthesize adoption assessment using askai-python or deterministic fallback.
@@ -66,7 +66,7 @@ class AdoptionAnalysisService:
         name: str,
         monthly_downloads: int,
         verified_adoptions: int,
-        notice: Optional[str] = None,
+        notice: str | None = None,
     ) -> AdoptionAssessmentOutput:
         header = f"[{notice}]\n" if notice else ""
         if verified_adoptions >= 20:

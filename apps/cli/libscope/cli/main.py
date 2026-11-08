@@ -3,15 +3,9 @@ LibScope Command Line Interface.
 Built with Typer and Rich.
 """
 import asyncio
-from datetime import datetime
 import json
-import sys
-from typing import List, Optional
+
 import typer
-from rich.console import Console
-from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.table import Table
 from libscope.analyzers.competitor import CompetitorAnalyzer
 from libscope.api.demo import seed_demo_data
 from libscope.api.orchestrator import run_package_analysis
@@ -23,12 +17,15 @@ from libscope.core.models import (
     HealthFinding,
     MetricSnapshot,
     Package,
-    Report,
     Score,
     SecurityFinding,
 )
 from libscope.providers.registry import get_provider_registry
 from libscope.reporting.generator import ReportGenerator
+from rich.console import Console
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.table import Table
 
 app = typer.Typer(
     name="libscope",
@@ -38,7 +35,7 @@ app = typer.Typer(
 console = Console()
 
 
-def format_score(score: Optional[float]) -> str:
+def format_score(score: float | None) -> str:
     if score is None:
         return "[dim]Insufficient data[/dim]"
     if score >= 85:
@@ -63,12 +60,12 @@ def analyze(
         TextColumn("[bold cyan]{task.description}[/bold cyan]"),
         transient=True,
     ) as progress:
-        task = progress.add_task(f"Analyzing {package} ({provider})...", total=None)
+        progress.add_task(f"Analyzing {package} ({provider})...", total=None)
         try:
             pkg = asyncio.run(run_package_analysis(package, ecosystem=provider, enable_ai=ai))
         except Exception as exc:
             console.print(f"[bold red]Analysis failed:[/bold red] {exc}")
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from exc
 
     with db_session() as session:
         pkg = session.query(Package).filter_by(id=pkg.id).first()
@@ -164,7 +161,7 @@ def analyze(
 
 @app.command()
 def compare(
-    packages: List[str] = typer.Argument(..., help="Two or more package names to compare"),
+    packages: list[str] = typer.Argument(..., help="Two or more package names to compare"),
 ):
     """Compare multiple software packages side-by-side."""
     init_db()
@@ -229,7 +226,7 @@ def compare(
 def report(
     package: str = typer.Argument(..., help="Package name"),
     format_type: str = typer.Option("markdown", "--format", "-f", help="Format: markdown, json, or html"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="File path to write report to"),
+    output: str | None = typer.Option(None, "--output", "-o", help="File path to write report to"),
 ):
     """Generate and export a reproducible intelligence report."""
     init_db()
@@ -238,7 +235,7 @@ def report(
         pkg = session.query(Package).filter_by(name=package.lower().strip()).first()
         if not pkg:
             console.print(f"[bold red]Package '{package}' not found in local database.[/bold red]")
-            console.print("Run 'libscope analyze {package}' first.")
+            console.print(f"Run 'libscope analyze {package}' first.")
             raise typer.Exit(code=1)
 
         score = session.query(Score).filter_by(package_id=pkg.id).order_by(Score.calculated_at.desc()).first()

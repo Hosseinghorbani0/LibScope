@@ -1,12 +1,11 @@
 """
 Native AI Client integration layer for LibScope using askai-python.
 """
-from typing import Any, Optional, Type
+from typing import Any
+
 from libscope.ai.config import AIConfig
 from libscope.ai.exceptions import (
     LibScopeAIConfigError,
-    LibScopeAIError,
-    LibScopeAIProviderError,
     map_ask_ai_exception,
 )
 from libscope.ai.prompts.system import BASE_SYSTEM_PROMPT
@@ -21,7 +20,7 @@ class AskAIClient:
     Decouples LibScope business logic from provider-specific SDK details.
     """
 
-    def __init__(self, config: Optional[AIConfig] = None):
+    def __init__(self, config: AIConfig | None = None):
         self.config = config or AIConfig.from_env()
         self._provider_instance = None
         self._init_error = None
@@ -76,10 +75,10 @@ class AskAIClient:
     async def ask_async(
         self,
         prompt: str,
-        response_model: Optional[Type] = None,
-        system_message: Optional[str] = None,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        response_model: type | None = None,
+        system_message: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> Any:
         """
         Execute an asynchronous LLM completion using askai-python.
@@ -114,9 +113,9 @@ class AskAIClient:
     def ask_sync(
         self,
         prompt: str,
-        response_model: Optional[Type] = None,
-        system_message: Optional[str] = None,
-        temperature: Optional[float] = None,
+        response_model: type | None = None,
+        system_message: str | None = None,
+        temperature: float | None = None,
     ) -> Any:
         """Synchronous version for CLI or scripts."""
         provider = self._get_provider()

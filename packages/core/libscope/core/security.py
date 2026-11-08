@@ -4,6 +4,7 @@ Security controls: SSRF prevention, URL validation, and safe network clients.
 import ipaddress
 import socket
 from urllib.parse import urlparse
+
 import httpx
 from libscope.core.config import get_settings
 from libscope.core.logging import get_logger

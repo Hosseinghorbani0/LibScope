@@ -3,7 +3,7 @@ Configuration management for LibScope using Pydantic Settings.
 """
 import os
 from functools import lru_cache
-from typing import List
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -71,13 +71,13 @@ class Settings(BaseSettings):
         return key.strip() if key else None
 
     @property
-    def parsed_cors_origins(self) -> List[str]:
+    def parsed_cors_origins(self) -> list[str]:
         if not self.cors_origins:
             return ["*"]
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     """Return cached singleton instance of Settings."""
     return Settings()

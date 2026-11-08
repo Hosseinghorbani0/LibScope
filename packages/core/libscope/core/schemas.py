@@ -2,7 +2,7 @@
 Pydantic v2 schemas for request validation, responses, and serializations.
 """
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -20,11 +20,11 @@ class PackageRead(BaseSchema):
     id: int
     name: str
     ecosystem: str
-    description: Optional[str] = None
-    homepage: Optional[str] = None
-    repository_url: Optional[str] = None
-    license: Optional[str] = None
-    latest_version: Optional[str] = None
+    description: str | None = None
+    homepage: str | None = None
+    repository_url: str | None = None
+    license: str | None = None
+    latest_version: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -44,18 +44,18 @@ class RepositoryRead(BaseSchema):
     default_branch: str
     is_archived: bool
     is_fork: bool
-    license: Optional[str] = None
-    last_commit_at: Optional[datetime] = None
-    last_release_at: Optional[datetime] = None
+    license: str | None = None
+    last_commit_at: datetime | None = None
+    last_release_at: datetime | None = None
 
 
 class ReleaseRead(BaseSchema):
     id: int
     package_id: int
     version: str
-    release_date: Optional[datetime] = None
+    release_date: datetime | None = None
     is_yanked: bool
-    download_url: Optional[str] = None
+    download_url: str | None = None
 
 
 class MetricSnapshotRead(BaseSchema):
@@ -64,11 +64,11 @@ class MetricSnapshotRead(BaseSchema):
     recorded_at: datetime
     period: str
     downloads_count: int
-    growth_rate: Optional[float] = None
-    stars_count: Optional[int] = None
-    forks_count: Optional[int] = None
-    issues_count: Optional[int] = None
-    raw_data: Optional[str] = None
+    growth_rate: float | None = None
+    stars_count: int | None = None
+    forks_count: int | None = None
+    issues_count: int | None = None
+    raw_data: str | None = None
 
 
 class AdoptionEvidenceRead(BaseSchema):
@@ -78,7 +78,7 @@ class AdoptionEvidenceRead(BaseSchema):
     source_repo_full_name: str
     file_path: str
     evidence_type: str
-    raw_match: Optional[str] = None
+    raw_match: str | None = None
     discovered_at: datetime
     stars: int
     confidence_score: float
@@ -91,7 +91,7 @@ class HealthFindingRead(BaseSchema):
     check_name: str
     status: str
     message: str
-    details: Optional[str] = None
+    details: str | None = None
     detected_at: datetime
 
 
@@ -100,13 +100,13 @@ class SecurityFindingRead(BaseSchema):
     package_id: int
     identifier: str
     severity: str
-    affected_range: Optional[str] = None
-    fixed_in: Optional[str] = None
+    affected_range: str | None = None
+    fixed_in: str | None = None
     source: str
-    reference_url: Optional[str] = None
-    title: Optional[str] = None
-    details: Optional[str] = None
-    remediation: Optional[str] = None
+    reference_url: str | None = None
+    title: str | None = None
+    details: str | None = None
+    remediation: str | None = None
     detected_at: datetime
 
 
@@ -115,17 +115,17 @@ class ScoreRead(BaseSchema):
     package_id: int
     version: str
     calculated_at: datetime
-    overall_score: Optional[float] = None
+    overall_score: float | None = None
     confidence_level: str
-    popularity_score: Optional[float] = None
-    growth_score: Optional[float] = None
-    adoption_score: Optional[float] = None
-    maintenance_score: Optional[float] = None
-    documentation_score: Optional[float] = None
-    quality_score: Optional[float] = None
-    security_score: Optional[float] = None
-    breakdown: Optional[str] = None
-    explanation: Optional[str] = None
+    popularity_score: float | None = None
+    growth_score: float | None = None
+    adoption_score: float | None = None
+    maintenance_score: float | None = None
+    documentation_score: float | None = None
+    quality_score: float | None = None
+    security_score: float | None = None
+    breakdown: str | None = None
+    explanation: str | None = None
 
 
 class AIAnalysisRead(BaseSchema):
@@ -133,18 +133,18 @@ class AIAnalysisRead(BaseSchema):
     package_id: int
     provider: str
     model: str
-    summary: Optional[str] = None
-    risks: Optional[str] = None
-    opportunities: Optional[str] = None
-    maintainer_recommendations: Optional[str] = None
-    competitive_position: Optional[str] = None
+    summary: str | None = None
+    risks: str | None = None
+    opportunities: str | None = None
+    maintainer_recommendations: str | None = None
+    competitive_position: str | None = None
     generated_at: datetime
 
 
 class PackageDetailRead(PackageRead):
-    repository: Optional[RepositoryRead] = None
-    latest_score: Optional[ScoreRead] = None
-    latest_ai_analysis: Optional[AIAnalysisRead] = None
+    repository: RepositoryRead | None = None
+    latest_score: ScoreRead | None = None
+    latest_ai_analysis: AIAnalysisRead | None = None
     recent_releases_count: int = 0
     total_downloads_30d: int = 0
     adoption_count: int = 0
@@ -160,16 +160,16 @@ class AnalysisJobCreate(BaseModel):
 
 class AnalysisJobRead(BaseSchema):
     id: str
-    package_id: Optional[int] = None
+    package_id: int | None = None
     package_name: str
     ecosystem: str
     status: str
     progress: int
     step_message: str
-    error_message: Optional[str] = None
+    error_message: str | None = None
     created_at: datetime
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
 
 # --- Report Schemas ---
@@ -188,30 +188,30 @@ class ReportRead(BaseSchema):
 
 # --- Competitor Comparison Schemas ---
 class CompareRequest(BaseModel):
-    package_ids: Optional[List[int]] = None
-    package_names: Optional[List[str]] = None
+    package_ids: list[int] | None = None
+    package_names: list[str] | None = None
     ecosystem: str = Field(default="pypi")
 
 
 class CompetitorMetricComparison(BaseModel):
     package_name: str
     ecosystem: str
-    overall_score: Optional[float] = None
+    overall_score: float | None = None
     confidence: str
     monthly_downloads: int
     stars: int
     forks: int
     open_issues: int
-    latest_version: Optional[str] = None
-    last_release_age_days: Optional[int] = None
+    latest_version: str | None = None
+    last_release_age_days: int | None = None
     verified_adoptions: int
     vulnerabilities_count: int
-    license: Optional[str] = None
-    comparability_notes: List[str]
+    license: str | None = None
+    comparability_notes: list[str]
 
 
 class CompareResponse(BaseModel):
     compared_at: datetime
-    packages: List[CompetitorMetricComparison]
+    packages: list[CompetitorMetricComparison]
     summary: str
 

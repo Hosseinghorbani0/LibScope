@@ -2,15 +2,12 @@
 LibScope Analysis Orchestrator.
 Executes end-to-end multi-provider collection, analysis, scoring, and storage.
 """
-from datetime import datetime, timezone
 import json
-from typing import Any, Dict, Optional
-import uuid
-from sqlalchemy.orm import Session
+from datetime import UTC, datetime
+
 from libscope.analyzers.adoption import AdoptionAnalyzer
 from libscope.analyzers.downloads import DownloadsAnalyzer
 from libscope.analyzers.health import HealthAnalyzer
-from libscope.analyzers.historical import HistoricalAnalyzer
 from libscope.analyzers.repository import RepositoryAnalyzer
 from libscope.analyzers.security import SecurityAnalyzer
 from libscope.core.config import get_settings
@@ -20,17 +17,14 @@ from libscope.core.models import (
     AdoptionEvidence,
     AIAnalysis,
     AnalysisJob,
-    CollectionRun,
     HealthFinding,
     MetricSnapshot,
     Package,
-    Release,
     Repository,
     Score,
     SecurityFinding,
 )
 from libscope.providers.github import GitHubProvider
-from libscope.providers.pypi import PyPIProvider
 from libscope.providers.registry import get_provider_registry
 from libscope.scoring.engine import ScoringEngine
 
@@ -41,16 +35,16 @@ async def run_package_analysis(
     package_name: str,
     ecosystem: str = "pypi",
     enable_ai: bool = False,
-    job_id: Optional[str] = None,
+    job_id: str | None = None,
 ) -> Package:
     """
     Run complete intelligence analysis on a package and persist findings.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     settings = get_settings()
     registry = get_provider_registry()
 
-    def update_job(status: str, progress: int, msg: str, error: Optional[str] = None, pkg_id: Optional[int] = None):
+    def update_job(status: str, progress: int, msg: str, error: str | None = None, pkg_id: int | None = None):
         if not job_id:
             return
         with db_session() as s:
@@ -64,9 +58,9 @@ async def run_package_analysis(
                 if pkg_id:
                     job.package_id = pkg_id
                 if status == "running" and not job.started_at:
-                    job.started_at = datetime.now(timezone.utc)
+                    job.started_at = datetime.now(UTC)
                 elif status in ("completed", "failed", "cancelled"):
-                    job.completed_at = datetime.now(timezone.utc)
+                    job.completed_at = datetime.now(UTC)
 
     update_job("running", 10, f"Resolving package '{package_name}' in {ecosystem}...")
 

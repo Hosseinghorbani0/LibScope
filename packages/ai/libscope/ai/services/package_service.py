@@ -1,7 +1,6 @@
 """
 Package Intelligence Analysis Service powered by askai-python.
 """
-from typing import Any, Dict, Optional
 from libscope.ai.client import AskAIClient
 from libscope.ai.models import PackageAnalysisOutput
 from libscope.ai.output_validator import AIOutputValidator
@@ -15,30 +14,30 @@ logger = get_logger("ai.service.package")
 class PackageAnalysisService:
     """Orchestrates comprehensive package intelligence synthesis."""
 
-    def __init__(self, client: Optional[AskAIClient] = None):
+    def __init__(self, client: AskAIClient | None = None):
         self.client = client or AskAIClient()
 
     async def analyze(
         self,
         name: str,
         ecosystem: str,
-        latest_version: Optional[str],
-        license_str: Optional[str],
-        repo_url: Optional[str],
+        latest_version: str | None,
+        license_str: str | None,
+        repo_url: str | None,
         monthly_downloads: int,
         mirror_inclusive: bool,
         growth_trend: str,
         stars: int,
         forks: int,
         open_issues: int,
-        days_since_commit: Optional[int],
-        days_since_release: Optional[int],
+        days_since_commit: int | None,
+        days_since_release: int | None,
         verified_adoptions: int,
         vulnerabilities_count: int,
         critical_high_count: int,
-        overall_score: Optional[float],
+        overall_score: float | None,
         confidence_level: str,
-        raw_description: Optional[str],
+        raw_description: str | None,
     ) -> PackageAnalysisOutput:
         """
         Generate structured package analysis using askai-python or deterministic fallback.
@@ -82,11 +81,11 @@ class PackageAnalysisService:
     def _build_deterministic_fallback(
         self,
         name: str,
-        score: Optional[float],
+        score: float | None,
         confidence: str,
         verified_adoptions: int,
         vulnerabilities: int,
-        notice: Optional[str] = None,
+        notice: str | None = None,
     ) -> PackageAnalysisOutput:
         header = f"[{notice}]\n" if notice else "[Deterministic Intelligence Report - AI Engine Offline]\n"
         score_str = f"{score}/100" if score is not None else "Insufficient Data"
