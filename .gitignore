@@ -1,0 +1,80 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+
+# LibScope local databases and outputs
+*.db
+*.sqlite
+*.sqlite3
+data/*.db
+data/*.sqlite
+reports_output/
+logs/
+
+# Node / Frontend
+node_modules/
+apps/dashboard/node_modules/
+apps/dashboard/dist/
+apps/dashboard/.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# External development directories (NEVER TRACK)
+ask-ai/
+ask_ai/
+../ask-ai/
+
+# Environment secrets (NEVER commit secrets)
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
