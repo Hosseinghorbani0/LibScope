@@ -128,6 +128,13 @@ class ScoreRead(BaseSchema):
     explanation: str | None = None
 
 
+class ScoreHistoryPointRead(BaseSchema):
+    calculated_at: datetime
+    overall_score: float | None = None
+    confidence_level: str
+    version: str
+
+
 class AIAnalysisRead(BaseSchema):
     id: int
     package_id: int
@@ -146,15 +153,21 @@ class PackageDetailRead(PackageRead):
     latest_score: ScoreRead | None = None
     latest_ai_analysis: AIAnalysisRead | None = None
     recent_releases_count: int = 0
-    total_downloads_30d: int = 0
+    total_downloads_30d: int | None = None
     adoption_count: int = 0
     vulnerabilities_count: int = 0
 
 
 # --- Job Schemas ---
 class AnalysisJobCreate(BaseModel):
-    package_name: str = Field(..., min_length=1, description="Name of the package or owner/repo to analyze")
-    ecosystem: str = Field(default="pypi", description="Ecosystem (pypi or github)")
+    package_name: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*(?:/[A-Za-z0-9][A-Za-z0-9_.-]*)?$",
+        description="Package name or GitHub owner/repository",
+    )
+    ecosystem: str = Field(default="pypi", pattern=r"^(pypi|python|github|git)$")
     enable_ai: bool = Field(default=False, description="Whether to run optional AI analysis")
 
 
@@ -172,10 +185,28 @@ class AnalysisJobRead(BaseSchema):
     completed_at: datetime | None = None
 
 
+class DashboardJobSummaryRead(BaseSchema):
+    id: str
+    package_id: int | None = None
+    package_name: str
+    ecosystem: str
+    status: str
+    created_at: datetime
+    completed_at: datetime | None = None
+
+
+class DashboardSummaryRead(BaseModel):
+    total_packages: int
+    scored_packages: int
+    linked_repositories: int
+    latest_package_update: datetime | None = None
+    recent_jobs: list[DashboardJobSummaryRead]
+
+
 # --- Report Schemas ---
 class ReportGenerateRequest(BaseModel):
     package_id: int
-    format: str = Field(default="markdown", description="Format: markdown, json, or html")
+    format: str = Field(default="markdown", pattern=r"^(markdown|md|json|html)$")
 
 
 class ReportRead(BaseSchema):
@@ -188,8 +219,8 @@ class ReportRead(BaseSchema):
 
 # --- Competitor Comparison Schemas ---
 class CompareRequest(BaseModel):
-    package_ids: list[int] | None = None
-    package_names: list[str] | None = None
+    package_ids: list[int] | None = Field(default=None, max_length=10)
+    package_names: list[str] | None = Field(default=None, max_length=10)
     ecosystem: str = Field(default="pypi")
 
 
@@ -198,14 +229,14 @@ class CompetitorMetricComparison(BaseModel):
     ecosystem: str
     overall_score: float | None = None
     confidence: str
-    monthly_downloads: int
-    stars: int
-    forks: int
-    open_issues: int
+    monthly_downloads: int | None = None
+    stars: int | None = None
+    forks: int | None = None
+    open_issues: int | None = None
     latest_version: str | None = None
     last_release_age_days: int | None = None
-    verified_adoptions: int
-    vulnerabilities_count: int
+    verified_adoptions: int | None = None
+    vulnerabilities_count: int | None = None
     license: str | None = None
     comparability_notes: list[str]
 
@@ -214,4 +245,3 @@ class CompareResponse(BaseModel):
     compared_at: datetime
     packages: list[CompetitorMetricComparison]
     summary: str
-
