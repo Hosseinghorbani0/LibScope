@@ -118,3 +118,4 @@ def test_process_raw_findings_filters_self_repo_and_deduplicates():
     # Ensure tiangolo/fastapi was NOT counted
     for item in res.findings:
         assert item.source_repo_full_name != "tiangolo/fastapi"
+
