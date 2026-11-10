@@ -245,3 +245,4 @@ class CompareResponse(BaseModel):
     compared_at: datetime
     packages: list[CompetitorMetricComparison]
     summary: str
+
