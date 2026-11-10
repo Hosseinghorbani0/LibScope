@@ -5,6 +5,20 @@ from datetime import UTC, datetime
 from typing import Any
 
 
+def _format_metric(value: Any, default: str = "N/A") -> str:
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return f"{value:,}"
+    return str(value)
+
+
+def _format_percent(value: Any, default: str = "N/A") -> str:
+    if isinstance(value, (int, float)):
+        return f"{value}%"
+    return default
+
+
 def generate_markdown_report(data: dict[str, Any]) -> str:
     """Generate professional, reproducible GitHub-flavored Markdown intelligence report."""
     pkg = data.get("package", {})
@@ -15,12 +29,11 @@ def generate_markdown_report(data: dict[str, Any]) -> str:
     sec = data.get("security", {})
     adoption = data.get("adoption", {})
     ai = data.get("ai")
-    data.get("sources", [])
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     overall = score.get("overall_score")
     score_display = f"**{overall}/100**" if overall is not None else "**Insufficient Data**"
-    conf = score.get("confidence_level", "medium").upper()
+    conf = str(score.get("confidence_level", "medium")).upper()
 
     md = f"""# LibScope Intelligence Report: {pkg.get('name', 'Package')}
 *Open-Source Software Intelligence. Beyond Downloads.*
@@ -55,6 +68,7 @@ Generated: `{now}` | Scoring Model: `{score.get('version', 'v1.0.0')}` | Confide
 ## 2. Adoption Discovery & Evidence
 *LibScope discovers verified independent projects that declare dependencies on this package.*
 
+- **Search Status:** `{adoption.get('status', 'not_checked')}`
 - **Confirmed Dependency Declarations:** `{adoption.get('confirmed_dependencies_count', 0)}`
 - **Confirmed Source-Code Usages:** `{adoption.get('confirmed_source_usage_count', 0)}`
 - **Possible Usages:** `{adoption.get('possible_usage_count', 0)}`
@@ -70,20 +84,30 @@ Generated: `{now}` | Scoring Model: `{score.get('version', 'v1.0.0')}` | Confide
         for f in findings:
             name = f.get('source_repo_full_name') or f.get('source_repo_url', 'Repository')
             url = f.get('source_repo_url', '#')
-            md += f"| [{name}]({url}) | `{f.get('evidence_type')}` | `{f.get('file_path')}` | {f.get('stars', 0):,} | {round(f.get('confidence_score', 0.5)*100)}% |\n"
+            confidence = f.get("confidence_score")
+            confidence_display = f"{round(confidence * 100)}%" if isinstance(confidence, (int, float)) else "N/A"
+            md += (
+                f"| [{name}]({url}) | `{f.get('evidence_type')}` | `{f.get('file_path')}` "
+                f"| {_format_metric(f.get('stars'), '0')} | {confidence_display} |\n"
+            )
     else:
-        md += "> *No independent external adoptions discovered in public manifest sample.*\n"
+        if adoption.get("status") == "checked":
+            md += "> *No independent external adoptions discovered in the checked public manifest sample.*\n"
+        else:
+            md += "> *No verified result is available; adoption search was not completed successfully.*\n"
+    for caveat in adoption.get("caveats", []) or []:
+        md += f"> *{caveat}*\n"
 
     md += f"""
 ---
 
 ## 3. Download & Consumption Analytics
-- **Monthly Downloads:** `{dl.get('monthly', 0):,}`
-- **Weekly Downloads:** `{dl.get('weekly', 0):,}`
-- **Daily Downloads:** `{dl.get('daily', 0):,}`
-- **Recent Growth Rate:** `{dl.get('growth_rate_pct', 'N/A')}%` (`{dl.get('recent_trend_direction', 'stable')}`)
-- **7-Day Moving Average:** `{dl.get('moving_average_7d', 'N/A')}`
-- **30-Day Moving Average:** `{dl.get('moving_average_30d', 'N/A')}`
+- **Monthly Downloads:** `{_format_metric(dl.get('monthly'))}`
+- **Weekly Downloads:** `{_format_metric(dl.get('weekly'))}`
+- **Daily Downloads:** `{_format_metric(dl.get('daily'))}`
+- **Recent Growth Rate:** `{_format_percent(dl.get('growth_rate_pct'))}` (`{dl.get('recent_trend_direction', 'stable')}`)
+- **7-Day Moving Average:** `{_format_metric(dl.get('moving_average_7d'))}`
+- **30-Day Moving Average:** `{_format_metric(dl.get('moving_average_30d'))}`
 - **Mirror Inclusive:** `{dl.get('mirror_inclusive', True)}`
 
 > **Note on Downloads:** Downloads represent automated CI runs, build scripts, mirror servers, and automated tools. They must not be equated with unique active developers.
@@ -93,16 +117,16 @@ Generated: `{now}` | Scoring Model: `{score.get('version', 'v1.0.0')}` | Confide
     if anomalies:
         md += "\n### Detected Anomaly Events\n"
         for a in anomalies:
-            md += f"- **{a.get('date')}** ({a.get('anomaly_type').upper()}): {a.get('message')}\n"
+            md += f"- **{a.get('date')}** ({str(a.get('anomaly_type', 'unknown')).upper()}): {a.get('message')}\n"
 
     md += f"""
 ---
 
 ## 4. Repository Intelligence
 - **Repository:** [{repo.get('full_name', 'N/A')}]({repo.get('url', '#')})
-- **Stars:** `{repo.get('stars', 0):,}` | **Forks:** `{repo.get('forks', 0):,}` | **Watchers:** `{repo.get('watchers', 0):,}`
-- **Open Issues / PRs:** `{repo.get('open_issues', 0):,}`
-- **Status:** `{repo.get('activity_status', 'active').upper()}`
+- **Stars:** `{_format_metric(repo.get('stars'))}` | **Forks:** `{_format_metric(repo.get('forks'))}` | **Watchers:** `{_format_metric(repo.get('watchers'))}`
+- **Open Issues / PRs:** `{_format_metric(repo.get('open_issues'))}`
+- **Status:** `{str(repo.get('activity_status', 'active')).upper()}`
 - **Days Since Last Commit:** `{repo.get('days_since_last_commit', 'N/A')}`
 - **Days Since Last Release:** `{repo.get('days_since_last_release', 'N/A')}`
 - **Is Archived:** `{repo.get('is_archived', False)}`
@@ -111,8 +135,9 @@ Generated: `{now}` | Scoring Model: `{score.get('version', 'v1.0.0')}` | Confide
 ---
 
 ## 5. Security Posture
-- **Known Vulnerabilities (OSV):** `{sec.get('vulnerabilities_count', 0)}`
-- **Critical:** `{sec.get('critical_count', 0)}` | **High:** `{sec.get('high_count', 0)}` | **Medium:** `{sec.get('medium_count', 0)}` | **Low:** `{sec.get('low_count', 0)}`
+- **Check Status:** `{sec.get('status', 'not_checked')}`
+- **Known Vulnerabilities (OSV):** `{sec.get('vulnerabilities_count') if sec.get('vulnerabilities_count') is not None else 'Not verified'}`
+- **Critical:** `{sec.get('critical_count') if sec.get('critical_count') is not None else 'Not verified'}` | **High:** `{sec.get('high_count') if sec.get('high_count') is not None else 'Not verified'}` | **Medium:** `{sec.get('medium_count') if sec.get('medium_count') is not None else 'Not verified'}` | **Low:** `{sec.get('low_count') if sec.get('low_count') is not None else 'Not verified'}`
 """
 
     vulns = sec.get("vulnerabilities", [])
@@ -122,20 +147,23 @@ Generated: `{now}` | Scoring Model: `{score.get('version', 'v1.0.0')}` | Confide
         for v in vulns:
             md += f"| [{v.get('identifier')}]({v.get('reference_url') or '#'}) | **{v.get('severity')}** | `{v.get('affected_versions')}` | {v.get('remediation')} |\n"
     else:
-        md += "> *No known vulnerabilities reported in OSV database. Note: absence of CVEs does not prove absence of zero-days.*\n"
+        if sec.get("status") == "checked":
+            md += "> *No known vulnerabilities reported in OSV database. Note: absence of CVEs does not prove absence of zero-days.*\n"
+        else:
+            md += "> *No clean result is available because this security check was incomplete or not performed.*\n"
 
     md += f"""
 ---
 
 ## 6. Project Health Findings
-- **Overall Rating:** `{health.get('overall_health_rating', 'healthy').upper()}`
+- **Overall Rating:** `{str(health.get('overall_health_rating', 'insufficient_data')).upper()}`
 """
     h_findings = health.get("findings", [])
     if h_findings:
         md += "\n| Category | Check | Status | Finding |\n"
         md += "| :--- | :--- | :---: | :--- |\n"
         for h in h_findings:
-            md += f"| `{h.get('category')}` | {h.get('check_name')} | `{h.get('status').upper()}` | {h.get('message')} |\n"
+            md += f"| `{h.get('category')}` | {h.get('check_name')} | `{str(h.get('status', 'unknown')).upper()}` | {h.get('message')} |\n"
 
     if ai:
         md += f"""
