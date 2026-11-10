@@ -108,3 +108,4 @@ select = ["E", "F", "W", "I", "UP", "B"]
 # E501: line-too-long (enforced by line-length setting)
 # B008: FastAPI uses Depends()/Query()/Argument() in function defaults by design
 ignore = ["E501", "B008"]
+
