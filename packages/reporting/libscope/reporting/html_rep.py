@@ -406,3 +406,4 @@ def generate_html_report(data: dict[str, Any]) -> str:
 </html>
 """
     return html_str
+
