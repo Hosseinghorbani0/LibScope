@@ -74,3 +74,4 @@ def test_osv_reports_partial_data_when_advisory_is_malformed():
     assert report.status == "partial"
     assert len(report.vulnerabilities) == 1
     assert report.high_count == 1
+
