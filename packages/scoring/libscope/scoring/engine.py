@@ -243,20 +243,36 @@ class ScoringEngine:
             inputs=inputs,
         )
 
-    def _calc_security(self, vulnerability_count: int, critical_or_high: int, has_security_policy: bool) -> DimensionScore:
+    def _calc_security(
+        self,
+        vulnerability_count: int,
+        critical_or_high: int,
+        has_security_policy: bool,
+        lookup_status: str = "checked",
+    ) -> DimensionScore:
         inputs = {
             "vulnerability_count": vulnerability_count,
             "critical_or_high": critical_or_high,
             "has_security_policy": has_security_policy,
+            "lookup_status": lookup_status,
         }
+        if lookup_status != "checked" and vulnerability_count == 0:
+            return DimensionScore(
+                name="security",
+                score=None,
+                weight=self.WEIGHTS["security"],
+                confidence="low",
+                explanation=f"Security lookup status is {lookup_status}; no clean result can be inferred.",
+                inputs=inputs,
+            )
         if critical_or_high > 0:
             score = max(10.0, 50.0 - (critical_or_high * 20.0))
             desc = f"Contains {critical_or_high} unresolved Critical/High vulnerabilities."
-            conf = "high"
+            conf = "high" if lookup_status == "checked" else "low"
         elif vulnerability_count > 0:
             score = 65.0
-            desc = f"Contains {vulnerability_count} known moderate/low vulnerabilities."
-            conf = "high"
+            desc = f"Contains {vulnerability_count} known vulnerabilities without a Critical/High finding."
+            conf = "high" if lookup_status == "checked" else "low"
         else:
             score = 90.0
             if has_security_policy:
@@ -294,6 +310,7 @@ class ScoringEngine:
         vulnerability_count: int = 0,
         critical_or_high: int = 0,
         has_security_policy: bool = False,
+        security_lookup_status: str = "checked",
     ) -> ScoreResult:
         now = datetime.now(UTC)
 
@@ -304,7 +321,12 @@ class ScoringEngine:
         dim_maint = self._calc_maintenance(days_since_commit, days_since_release, is_archived)
         dim_doc = self._calc_documentation(has_readme, has_docs_site, description)
         dim_qual = self._calc_quality(has_license, is_standard_license, has_ci)
-        dim_sec = self._calc_security(vulnerability_count, critical_or_high, has_security_policy)
+        dim_sec = self._calc_security(
+            vulnerability_count,
+            critical_or_high,
+            has_security_policy,
+            lookup_status=security_lookup_status,
+        )
 
         dimensions = {
             "popularity": dim_pop,
