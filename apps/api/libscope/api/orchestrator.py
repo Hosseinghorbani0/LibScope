@@ -446,3 +446,4 @@ async def _run_package_analysis(
     # Re-query package to return
     with db_session() as session:
         return session.query(Package).filter_by(id=package_id).first()
+
