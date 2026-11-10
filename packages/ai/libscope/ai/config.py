@@ -50,3 +50,4 @@ class AIConfig:
             max_tokens=settings.ai_max_tokens,
             enabled=not is_disabled and bool(key and key.strip()),
         )
+
