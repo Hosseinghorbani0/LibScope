@@ -50,7 +50,7 @@ Software engineering teams and open-source consumers frequently select packages 
 - **Multi-Interface Delivery**:
   - **Terminal CLI**: Rich interactive console with side-by-side package comparisons, table visualizations, and offline benchmarking.
   - **REST API**: Production FastAPI backend with background job orchestration and OpenAPI / Swagger documentation.
-  - **Web Dashboard**: Modern Single-Page Application (SPA) built with React 18, Vite, TypeScript, and Tailwind CSS.
+  - **Web Dashboard**: Framework-free HTML, CSS, and modern JavaScript served directly by FastAPI; no frontend build or Node.js runtime is required.
   - **Executive Reports**: Multi-format generation in Markdown, JSON, and self-contained interactive HTML.
 
 ---
@@ -89,7 +89,7 @@ flowchart TD
     subgraph Delivery & Interfaces
         CLI[Typer CLI<br/>Rich Visualizations]
         API[FastAPI REST Engine<br/>Background Orchestration]
-        UI[React 18 Dashboard<br/>TypeScript + Tailwind]
+        UI[Native HTML/CSS/JavaScript Dashboard<br/>Served by FastAPI]
         Reports[Multi-Format Reports<br/>Markdown / JSON / HTML]
     end
 
@@ -136,6 +136,12 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install libscope with core dependencies
 pip install -e .
+```
+
+To enable live AI provider calls, install the optional provider SDKs as well:
+
+```bash
+pip install -e ".[ai]"
 ```
 
 ### 2. Run the Offline Demo Benchmark
@@ -186,13 +192,11 @@ libscope history fastapi
 ### Launching the Web Server
 
 ```bash
-# Build the frontend assets
-cd apps/dashboard
-npm install
-npm run build
-cd ../..
-
-# Launch the FastAPI application
+# Install LibScope and launch the FastAPI application.
+# Dashboard assets are included with the API package; no Node.js or frontend build is needed.
+pip install -e .
+# Local-only development mode (production requires an API key)
+export LIBSCOPE_ENVIRONMENT=development
 uvicorn libscope.api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
@@ -200,18 +204,29 @@ uvicorn libscope.api.main:app --host 0.0.0.0 --port 8000 --reload
 - **API Documentation (Swagger UI)**: Navigate to [http://localhost:8000/docs](http://localhost:8000/docs)
 - **Health Check**: `curl http://localhost:8000/health`
 
+The dashboard uses same-origin relative API URLs and native browser `fetch`. Its static HTML, CSS, and JavaScript are served from `/` and `/dashboard-assets/` and are included in the Python distribution. Browsers do not need Node.js or any frontend installation.
+
+The dashboard interface is available in English, Persian, and Arabic. Persian and Arabic switch the page to right-to-left layout; the language preference is stored in this browser, while API keys remain memory-only.
+
 ### Key REST Endpoints
 
 | Method | Endpoint | Description |
 | ------ | -------- | ----------- |
 | `GET` | `/health` | System health check and version status |
+| `GET` | `/api/v1/dashboard/summary` | Exact package/repository/score totals and a bounded recent-job list |
 | `GET` | `/api/v1/packages` | List analyzed packages with latest scores |
 | `GET` | `/api/v1/packages/{id}` | Detailed package telemetry and findings |
+| `GET` | `/api/v1/packages/{id}/analytics?limit=100&offset=0` | Paginated metric snapshots (1-500 per request) |
+| `GET` | `/api/v1/packages/{id}/history?limit=100` | Bounded historical snapshots, chart points, and recent deltas |
+| `GET` | `/api/v1/packages/{id}/score-history?limit=100` | Bounded, chronological stored score observations |
+| `GET` | `/api/v1/packages/{id}/adoption/status` | Adoption discovery status and verification caveats |
 | `POST` | `/api/v1/analyze` | Trigger asynchronous package analysis job |
 | `GET` | `/api/v1/jobs/{id}` | Inspect analysis job progress and status |
 | `POST` | `/api/v1/compare` | Multi-package comparative analysis |
 | `POST` | `/api/v1/reports/generate` | Generate Markdown, JSON, or HTML reports |
 | `POST` | `/api/v1/demo/seed` | Seed benchmark dataset |
+
+In production, set `LIBSCOPE_API_KEY` to a strong secret. The dashboard's **Settings → API Access** form accepts an operator-provided key and keeps it only in tab memory; it is not embedded in the frontend bundle or persisted to browser storage. Use a managed identity or authenticated gateway for multi-user deployments, and provide this shared key only to trusted operators.
 
 ---
 
@@ -225,6 +240,8 @@ LibScope integrates [`askai-python`](https://pypi.org/project/askai-python/) as 
 - **Async & Sync Support**: Powers both asynchronous FastAPI pipelines and synchronous CLI commands.
 
 ### Configuring AI Credentials
+
+The base installation includes the `askai-python` integration but not its optional provider SDKs. Install `.[ai]` to enable all supported providers. Azure OpenAI additionally requires its endpoint, API version, and deployment settings. Custom base URLs are supported only for OpenRouter and OpenAI-compatible providers and remain subject to the outbound URL policy.
 
 Set your desired provider credentials in your environment or `.env` file:
 
@@ -243,6 +260,13 @@ export LIBSCOPE_AI_MODEL="gpt-4o"
 export GEMINI_API_KEY="AIzaSy..."
 export LIBSCOPE_AI_PROVIDER="google"
 export LIBSCOPE_AI_MODEL="gemini-1.5-pro"
+
+# Or configure Azure OpenAI
+export AZURE_OPENAI_API_KEY="..."
+export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com"
+export AZURE_OPENAI_API_VERSION="2024-10-21"
+export AZURE_OPENAI_DEPLOYMENT_NAME="your-deployment"
+export LIBSCOPE_AI_PROVIDER="azure"
 ```
 
 ### 100% Offline / Air-Gapped Guarantee
@@ -259,6 +283,9 @@ If no AI keys are configured or if the external AI provider is unreachable, LibS
 Deploy LibScope with a single command:
 
 ```bash
+# Set a strong secret before starting the production container
+export LIBSCOPE_API_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+
 # Build and run with docker compose
 docker compose up -d
 
@@ -269,12 +296,15 @@ docker compose logs -f libscope
 curl http://localhost:8000/health
 ```
 
+For production, expose the service through an HTTPS-terminating reverse proxy; do not transmit bearer keys over plain HTTP.
+
 ---
 
 ## Security
 
 LibScope enforces strict defensive controls:
-- **SSRF Protection**: Validates and restricts all outgoing HTTP requests, blocking cloud metadata endpoints (`169.254.169.254`, `metadata.google.internal`) and private/loopback IP address ranges.
+- **SSRF Protection**: LibScope-managed provider requests validate resolved IP addresses and block cloud metadata endpoints (`169.254.169.254`, `metadata.google.internal`) and private/loopback IP address ranges. Custom OpenAI-compatible and Azure AI endpoints are validated before use.
+- **API Access Control**: Production analysis, report-generation, and demo-seeding routes require `Authorization: Bearer <key>` and are rate-limited. Never place the server key in static frontend assets or source control.
 - **Prompt Injection Defense**: Sanitizes and enforces character boundaries on all untrusted user content (e.g. package descriptions, READMEs) before passing them to the AI analyst.
 - **Deterministic Separation**: Math, metrics, and scores are calculated purely in Python code; AI is restricted to interpretive synthesis.
 
@@ -291,4 +321,3 @@ We welcome community contributions! Please review our [Contributing Guide](CONTR
 ## License
 
 LibScope is released under the **[Apache-2.0 License](LICENSE)**.
-
