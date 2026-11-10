@@ -2,11 +2,13 @@
 Security Intelligence and Vulnerability Analysis.
 Integrates with OSV (Open Source Vulnerabilities) API for CVE and GHSA tracking.
 """
+import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
 import httpx
+from libscope.core.config import get_settings
 from libscope.core.logging import get_logger
 from libscope.core.security import create_safe_httpx_client
 
@@ -40,6 +42,8 @@ class SecurityReport:
     medium_count: int = 0
     low_count: int = 0
     caveats: list[str] = field(default_factory=list)
+    status: str = "checked"
+    error: str | None = None
 
 
 class SecurityAnalyzer:
@@ -54,30 +58,20 @@ class SecurityAnalyzer:
         return self._client
 
     def _normalize_severity(self, raw_vuln: dict[str, Any]) -> str:
-        # Check database_specific or severity CVSS
-        severities = raw_vuln.get("severity", [])
-        for s in severities:
-            score_type = s.get("type")
-            score_val = s.get("score")
-            # If CVSS score is available
-            if score_type and "CVSS" in score_type and isinstance(score_val, str):
-                if score_val.startswith("CVSS:"):
-                    # We can estimate or check database_specific
-                    pass
-
         db_spec = raw_vuln.get("database_specific", {})
-        sev = db_spec.get("severity")
+        sev = db_spec.get("severity") if isinstance(db_spec, dict) else None
         if isinstance(sev, str):
             sev_upper = sev.upper()
-            if sev_upper in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
+            if sev_upper in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"):
                 return sev_upper
 
-        # Check ecosystem_specific
         eco_spec = raw_vuln.get("ecosystem_specific", {})
-        if eco_spec.get("severity"):
-            return str(eco_spec["severity"]).upper()
+        if isinstance(eco_spec, dict):
+            severity = str(eco_spec.get("severity", "")).upper()
+            if severity in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"):
+                return severity
 
-        return "MEDIUM"
+        return "UNKNOWN"
 
     async def check_vulnerabilities(self, package_name: str, ecosystem: str = "PyPI") -> SecurityReport:
         now = datetime.now(UTC)
@@ -85,8 +79,35 @@ class SecurityAnalyzer:
             "Absence of reported vulnerabilities indicates no publicly known CVEs; it does not guarantee absence of zero-day vulnerabilities or security flaws."
         ]
 
-        # OSV expects ecosystem capitalized (e.g. PyPI, npm)
-        osv_eco = "PyPI" if ecosystem.lower() in ("pypi", "python") else ecosystem.capitalize()
+        ecosystem_map = {
+            "pypi": "PyPI",
+            "python": "PyPI",
+            "npm": "npm",
+            "node": "npm",
+            "go": "Go",
+            "golang": "Go",
+            "cargo": "crates.io",
+            "rust": "crates.io",
+            "maven": "Maven",
+            "java": "Maven",
+            "nuget": ".NET",
+            "dotnet": ".NET",
+            "rubygems": "RubyGems",
+            "ruby": "RubyGems",
+            "packagist": "Packagist",
+            "php": "Packagist",
+        }
+        normalized_ecosystem = ecosystem.lower().strip()
+        osv_eco = ecosystem_map.get(normalized_ecosystem)
+        if not osv_eco:
+            return SecurityReport(
+                package_name=package_name,
+                ecosystem=ecosystem,
+                checked_at=now,
+                has_known_vulnerabilities=False,
+                caveats=[f"Security lookup is not supported for ecosystem '{ecosystem}'."],
+                status="unsupported",
+            )
         payload = {
             "package": {
                 "name": package_name.lower().strip(),
@@ -96,58 +117,116 @@ class SecurityAnalyzer:
 
         vulnerabilities: list[VulnerabilityFinding] = []
         client = await self._get_client()
+        status_value = "checked"
+        error_message = None
+        malformed_findings = False
+        url = "https://api.osv.dev/v1/query"
+        settings = get_settings()
+        attempts = min(max(settings.max_retries + 1, 1), 3)
 
-        try:
-            url = "https://api.osv.dev/v1/query"
-            resp = await client.post(url, json=payload)
-            if resp.status_code == 200:
+        for attempt in range(attempts):
+            try:
+                resp = await client.post(url, json=payload)
+                if resp.status_code in (429, 500, 502, 503, 504):
+                    if attempt + 1 < attempts:
+                        await asyncio.sleep(min(0.25 * (2**attempt), 1.0))
+                        continue
+                    status_value = "rate_limited" if resp.status_code == 429 else "failed"
+                    error_message = f"OSV returned HTTP {resp.status_code}"
+                    break
+                resp.raise_for_status()
                 data = resp.json()
+                if not isinstance(data, dict) or not isinstance(data.get("vulns", []), list):
+                    raise ValueError("OSV response did not contain a valid vulnerability list")
                 raw_vulns = data.get("vulns", [])
                 for v in raw_vulns:
-                    vid = v.get("id", "UNKNOWN-VULN")
-                    severity = self._normalize_severity(v)
-                    summary = v.get("summary", "") or v.get("details", "")[:120]
-                    details = v.get("details", "")
+                    if not isinstance(v, dict):
+                        malformed_findings = True
+                        continue
+                    try:
+                        vid = v.get("id", "UNKNOWN-VULN")
+                        summary = v.get("summary", "")
+                        details = v.get("details", "")
+                        if not isinstance(vid, str) or not isinstance(summary, str) or not isinstance(details, str):
+                            raise TypeError("invalid advisory text fields")
 
-                    # Extract affected version range and fixed version
-                    affected_ranges = []
-                    fixed_ver = None
-                    for aff in v.get("affected", []):
-                        for r in aff.get("ranges", []):
-                            events = r.get("events", [])
-                            for ev in events:
-                                if "fixed" in ev:
-                                    fixed_ver = ev["fixed"]
-                                if "introduced" in ev:
-                                    affected_ranges.append(f">={ev['introduced']}")
+                        affected_ranges = []
+                        fixed_ver = None
+                        affected = v.get("affected", [])
+                        if not isinstance(affected, list):
+                            raise TypeError("invalid affected package list")
+                        for aff in affected:
+                            if not isinstance(aff, dict):
+                                raise TypeError("invalid affected package entry")
+                            ranges = aff.get("ranges", [])
+                            if not isinstance(ranges, list):
+                                raise TypeError("invalid version range list")
+                            for version_range in ranges:
+                                if not isinstance(version_range, dict):
+                                    raise TypeError("invalid version range")
+                                events = version_range.get("events", [])
+                                if not isinstance(events, list):
+                                    raise TypeError("invalid version events")
+                                for event in events:
+                                    if not isinstance(event, dict):
+                                        raise TypeError("invalid version event")
+                                    if "fixed" in event and isinstance(event["fixed"], str):
+                                        fixed_ver = event["fixed"]
+                                    if "introduced" in event and isinstance(event["introduced"], str):
+                                        affected_ranges.append(f">={event['introduced']}")
 
-                    # Extract reference url
-                    ref_url = None
-                    for ref in v.get("references", []):
-                        if ref.get("url"):
-                            ref_url = ref["url"]
-                            break
-
-                    remediation = f"Upgrade {package_name} to {fixed_ver} or newer." if fixed_ver else "Review advisory and restrict usage if affected."
-
-                    vulnerabilities.append(
-                        VulnerabilityFinding(
-                            identifier=vid,
-                            severity=severity,
-                            affected_package=package_name,
-                            affected_versions=", ".join(affected_ranges) if affected_ranges else "all versions",
-                            fixed_version=fixed_ver,
-                            source="OSV",
-                            reference_url=ref_url,
-                            title=summary[:200] if summary else f"Security advisory for {package_name}",
-                            details=details,
-                            remediation=remediation,
+                        references = v.get("references", [])
+                        if not isinstance(references, list):
+                            raise TypeError("invalid advisory references")
+                        ref_url = next(
+                            (
+                                ref["url"]
+                                for ref in references
+                                if isinstance(ref, dict) and isinstance(ref.get("url"), str)
+                            ),
+                            None,
                         )
-                    )
+                        severity = self._normalize_severity(v)
+                        title = summary or details[:120] or f"Security advisory for {package_name}"
+                        remediation = (
+                            f"Upgrade {package_name} to {fixed_ver} or newer."
+                            if fixed_ver
+                            else "Review advisory and restrict usage if affected."
+                        )
+                        vulnerabilities.append(
+                            VulnerabilityFinding(
+                                identifier=vid,
+                                severity=severity,
+                                affected_package=package_name,
+                                affected_versions=", ".join(affected_ranges) if affected_ranges else "all versions",
+                                fixed_version=fixed_ver,
+                                source="OSV",
+                                reference_url=ref_url,
+                                title=title[:200],
+                                details=details,
+                                remediation=remediation,
+                            )
+                        )
+                    except (TypeError, AttributeError):
+                        malformed_findings = True
+                if malformed_findings:
+                    status_value = "partial"
+                    error_message = "OSV response contained malformed vulnerability entries"
+                break
+            except (httpx.HTTPError, ValueError) as exc:
+                error_message = str(exc)
+                if attempt + 1 < attempts and (
+                    not isinstance(exc, httpx.HTTPStatusError)
+                    or exc.response.status_code >= 500
+                ):
+                    await asyncio.sleep(min(0.25 * (2**attempt), 1.0))
+                    continue
+                status_value = "failed"
+                break
 
-        except Exception as exc:
-            logger.warning(f"OSV vulnerability lookup failed for {package_name}: {exc}")
-            caveats.append(f"Vulnerability database check encountered network error: {str(exc)}")
+        if status_value != "checked":
+            logger.warning("OSV lookup %s for %s: %s", status_value, package_name, error_message)
+            caveats.append(f"Vulnerability lookup {status_value}; security status is not a clean result.")
 
         crit = sum(1 for v in vulnerabilities if v.severity == "CRITICAL")
         high = sum(1 for v in vulnerabilities if v.severity == "HIGH")
@@ -165,5 +244,6 @@ class SecurityAnalyzer:
             medium_count=med,
             low_count=low,
             caveats=caveats,
+            status=status_value,
+            error=error_message,
         )
-
