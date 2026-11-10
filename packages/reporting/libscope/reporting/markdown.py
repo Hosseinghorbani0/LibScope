@@ -194,3 +194,4 @@ All findings cite verified repository APIs, public manifest search, and open vul
 LibScope never fabricates adoption or health metrics.
 """
     return md
+
