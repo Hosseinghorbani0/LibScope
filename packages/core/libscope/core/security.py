@@ -120,3 +120,4 @@ def create_safe_httpx_client(timeout: float | None = None) -> httpx.AsyncClient:
         follow_redirects=True,
         event_hooks={"request": [validate_request]},
     )
+
