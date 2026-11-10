@@ -694,3 +694,4 @@ app.mount(
 @app.get("/", include_in_schema=False)
 def dashboard_index():
     return FileResponse(_dashboard_dir / "index.html")
+
