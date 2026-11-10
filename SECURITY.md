@@ -32,7 +32,9 @@ Instead, please report it privately:
 ## Security Architecture in LibScope
 
 LibScope incorporates rigorous defensive measures:
-- **SSRF Protection**: URL targets must be public HTTP/HTTPS endpoints; loopback, private IPv4/IPv6, and cloud metadata hostnames (`169.254.169.254`, `metadata.google.internal`) are blocked by `libscope.core.security`.
+- **API Access Control**: Production deployments require `LIBSCOPE_API_KEY` for analysis, report-generation, and demo-seeding requests. The dashboard accepts an operator-provided key in Settings and sends it as an `Authorization: Bearer` header from memory; it is not persisted to browser storage. Never embed the server key in static assets or source control.
+- **Transport Security**: Production deployments must terminate TLS at a trusted reverse proxy before bearer credentials are sent.
+- **Request Throttling**: Expensive routes have a process-local rate limit. Multi-worker or multi-instance deployments should enforce a shared limit at the ingress or API gateway.
+- **SSRF Protection**: LibScope-managed provider requests validate resolved public IPs and reject loopback, private IPv4/IPv6, and cloud metadata hostnames (`169.254.169.254`, `metadata.google.internal`). Custom OpenAI-compatible and Azure AI endpoints are validated before use.
 - **Untrusted Content Sanitization**: README excerpts, release notes, and issue comments are tagged as untrusted and scrubbed of prompt injection payloads before passing to AI interpretation layers.
 - **Deterministic Separation**: Mathematical calculations, trend metrics, and scores are separated completely from AI interpretation models, preventing hallucinations from corrupting empirical findings.
-
