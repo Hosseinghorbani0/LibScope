@@ -150,3 +150,4 @@ export const api = {
     return request(`${API_BASE}/demo/seed`, { method: "POST" });
   },
 };
+
