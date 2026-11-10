@@ -92,3 +92,4 @@ export function scoreGauge(score, confidence = "medium", size = 112) {
     <span class="badge ${confidence === "high" ? "good" : confidence === "low" ? "bad" : "warn"}">${escapeHtml(t("score.confidence", { confidence: statusLabel(confidence) }))}</span>
   </div>`;
 }
+
