@@ -59,7 +59,7 @@ def validate_safe_url(url: str, enforce_allowlist: bool = False) -> bool:
     4. If enforce_allowlist is True, domain must be in DEFAULT_ALLOWED_DOMAINS.
     """
     settings = get_settings()
-    if not settings.enforce_ssrf_protection:
+    if not settings.enforce_ssrf_protection and settings.environment.lower() != "production":
         return True
 
     try:
@@ -69,15 +69,15 @@ def validate_safe_url(url: str, enforce_allowlist: bool = False) -> bool:
             return False
 
         hostname = (parsed.hostname or "").lower()
-        if not hostname:
+        if not hostname or parsed.username or parsed.password:
             return False
 
         if hostname in BLOCKED_HOSTNAMES:
-            logger.warning(f"Blocked cloud metadata/loopback hostname: {hostname}")
+            logger.warning("Blocked cloud metadata/loopback hostname: %s", hostname)
             return False
 
         if enforce_allowlist and hostname not in DEFAULT_ALLOWED_DOMAINS:
-            logger.warning(f"Hostname not in allowed integration domains: {hostname}")
+            logger.warning("Hostname not in allowed integration domains: %s", hostname)
             return False
 
         # Attempt to resolve IP to guarantee it does not point to internal network
@@ -87,7 +87,7 @@ def validate_safe_url(url: str, enforce_allowlist: bool = False) -> bool:
                 sockaddr = item[4]
                 ip_candidate = sockaddr[0]
                 if is_ip_private_or_restricted(ip_candidate):
-                    logger.warning(f"SSRF blocked: {hostname} resolved to restricted IP: {ip_candidate}")
+                    logger.warning("SSRF blocked: %s resolved to a restricted IP", hostname)
                     return False
         except socket.gaierror:
             # Cannot resolve hostname
@@ -95,8 +95,8 @@ def validate_safe_url(url: str, enforce_allowlist: bool = False) -> bool:
             return False
 
         return True
-    except Exception as exc:
-        logger.warning(f"URL validation failed for {url}: {exc}")
+    except (ValueError, OSError) as exc:
+        logger.warning("URL validation failed: %s", exc)
         return False
 
 
@@ -110,9 +110,13 @@ def create_safe_httpx_client(timeout: float | None = None) -> httpx.AsyncClient:
         "Accept": "application/json",
     }
 
+    async def validate_request(request: httpx.Request) -> None:
+        if not validate_safe_url(str(request.url)):
+            raise httpx.RequestError("Outbound URL rejected by SSRF policy", request=request)
+
     return httpx.AsyncClient(
         headers=headers,
         timeout=httpx.Timeout(eff_timeout, connect=5.0),
         follow_redirects=True,
+        event_hooks={"request": [validate_request]},
     )
-
