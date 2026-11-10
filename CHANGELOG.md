@@ -67,3 +67,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - REST API with FastAPI, async background orchestration, and health checks.
   - Interactive Single-Page Application (SPA) dashboard built with React 18, TypeScript, Vite, Tailwind CSS, and Lucide icons.
   - Rich CLI built with Typer for terminal diagnostics, comparisons, reports, and offline demo benchmarking.
+
