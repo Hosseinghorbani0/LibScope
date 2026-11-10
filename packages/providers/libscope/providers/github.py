@@ -2,9 +2,12 @@
 GitHub Repository and Code Host Provider implementation.
 Queries GitHub REST API v3 with authentication support, rate limit tracking, and safe fallbacks.
 """
+import base64
+import binascii
 import re
 from datetime import datetime
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from libscope.core.config import get_settings
@@ -32,6 +35,7 @@ class GitHubProvider(BaseProvider):
         self._client = client
         self._rate_limit_remaining: int | None = None
         self._rate_limit_reset: int | None = None
+        self._code_search_status = "not_checked"
 
     @property
     def name(self) -> str:
@@ -54,6 +58,10 @@ class GitHubProvider(BaseProvider):
             "commit_activity": True,
         }
 
+    @property
+    def code_search_status(self) -> str:
+        return self._code_search_status
+
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
             self._client = create_safe_httpx_client()
@@ -65,6 +73,8 @@ class GitHubProvider(BaseProvider):
         }
         if self._token:
             headers["Authorization"] = f"Bearer {self._token}"
+        if self._token:
+            headers["Authorization"] = "Bearer " + self._token
         return headers
 
     def parse_owner_repo(self, query_or_url: str) -> tuple[str, str]:
@@ -264,13 +274,19 @@ class GitHubProvider(BaseProvider):
         Search for adoption evidence of package_name in manifests across public GitHub repositories.
         Searches filenames like requirements.txt, pyproject.toml, setup.py, package.json.
         """
+        self._code_search_status = "unavailable"
         if not self._token:
             logger.info("GitHub code search skipped: unauthenticated API has strict limits on search.")
             return []
 
         url = "https://api.github.com/search/code"
         client = await self._get_client()
-        query = f'"{package_name}" filename:requirements.txt OR filename:pyproject.toml'
+        safe_name = package_name.replace('"', "").strip()
+        query = (
+            f'"{safe_name}" (filename:requirements.txt OR filename:requirements.in '
+            "OR filename:pyproject.toml OR filename:setup.cfg OR filename:Pipfile "
+            "OR filename:package.json)"
+        )
 
         try:
             resp = await client.get(
@@ -281,17 +297,79 @@ class GitHubProvider(BaseProvider):
             await self._check_response(resp, "code search")
             data = resp.json()
             items = data.get("items", [])
+            if not isinstance(items, list):
+                raise ValueError("GitHub code search returned an invalid item list")
             results = []
             for item in items:
                 repo_info = item.get("repository", {})
-                results.append({
-                    "repo_full_name": repo_info.get("full_name"),
+                repo_name = repo_info.get("full_name")
+                file_path = item.get("path")
+                result = {
+                    "repo_full_name": repo_name,
                     "repo_url": repo_info.get("html_url"),
-                    "file_path": item.get("path"),
+                    "file_path": file_path,
                     "html_url": item.get("html_url"),
-                })
+                    "fetch_status": "unavailable",
+                }
+                if isinstance(repo_name, str) and isinstance(file_path, str):
+                    content, fetch_status = await self._fetch_manifest_content(client, repo_name, file_path)
+                    result["fetch_status"] = fetch_status
+                    if content is not None:
+                        result["raw_match"] = content
+                results.append(result)
+            self._code_search_status = (
+                "checked"
+                if all(item.get("fetch_status") == "available" for item in results)
+                else "partial"
+            )
             return results
         except Exception as exc:
+            self._code_search_status = "rate_limited" if "rate limit" in str(exc).lower() else "failed"
             logger.warning(f"GitHub code search failed for '{package_name}': {exc}")
             return []
 
+    async def _fetch_manifest_content(
+        self,
+        client: httpx.AsyncClient,
+        repo_full_name: str,
+        file_path: str,
+    ) -> tuple[str | None, str]:
+        if (
+            not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo_full_name)
+            or len(file_path) > 512
+            or any(part in ("", ".", "..") for part in file_path.split("/"))
+        ):
+            return None, "invalid_path"
+
+        encoded_path = quote(file_path, safe="/")
+        endpoint = f"https://api.github.com/repos/{repo_full_name}/contents/{encoded_path}"
+        try:
+            response = await client.get(endpoint, headers=self._get_headers())
+        except httpx.RequestError:
+            return None, "network_error"
+        if response.status_code == 404:
+            return None, "missing"
+        if response.status_code in (401, 403):
+            return None, "inaccessible"
+        if response.status_code == 429:
+            return None, "rate_limited"
+        await self._check_response(response, f"manifest {repo_full_name}/{file_path}")
+
+        try:
+            data = response.json()
+        except ValueError:
+            return None, "invalid_response"
+        if not isinstance(data, dict):
+            return None, "invalid_response"
+        if data.get("size", 0) > 1_000_000:
+            return None, "oversized"
+        encoded_content = data.get("content")
+        if data.get("encoding") != "base64" or not isinstance(encoded_content, str):
+            return None, "unsupported_encoding"
+        try:
+            content_bytes = base64.b64decode("".join(encoded_content.split()), validate=True)
+            if len(content_bytes) > 1_000_000:
+                return None, "oversized"
+            return content_bytes.decode("utf-8"), "available"
+        except (binascii.Error, UnicodeDecodeError):
+            return None, "invalid_content"
