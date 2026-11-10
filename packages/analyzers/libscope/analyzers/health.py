@@ -12,6 +12,37 @@ from libscope.providers.base import NormalizedMetadata, NormalizedRelease, Norma
 logger = get_logger("analyzer.health")
 
 
+def normalize_health_rating(rating: str | None = None, findings: list[Any] | None = None) -> str:
+    """Map analyzer and persisted finding states to a shared public vocabulary."""
+    normalized = (rating or "").strip().lower()
+    rating_map = {
+        "excellent": "healthy",
+        "healthy": "healthy",
+        "needs_attention": "warning",
+        "warning": "warning",
+        "at_risk": "critical",
+        "critical": "critical",
+        "insufficient_data": "insufficient_data",
+        "unknown": "unknown",
+    }
+    if normalized in rating_map:
+        return rating_map[normalized]
+
+    statuses = [
+        str(finding.get("status") if isinstance(finding, dict) else getattr(finding, "status", "") or "").lower()
+        for finding in findings or []
+    ]
+    if not statuses:
+        return "insufficient_data"
+    if any(item == "fail" for item in statuses):
+        return "critical"
+    if any(item in {"warning", "missing"} for item in statuses):
+        return "warning"
+    if all(item == "pass" for item in statuses):
+        return "healthy"
+    return "unknown"
+
+
 @dataclass
 class HealthCheckResult:
     category: str  # documentation, testing, ci, release_discipline, maintenance, license, security_policy
@@ -269,4 +300,3 @@ class HealthAnalyzer:
             strengths=strengths,
             risks=risks,
         )
-
