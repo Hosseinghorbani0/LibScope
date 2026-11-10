@@ -1,15 +1,20 @@
 """
 Native AI Client integration layer for LibScope using askai-python.
 """
+import asyncio
 from typing import Any
+from urllib.parse import urlsplit
 
+import httpx
 from libscope.ai.config import AIConfig
 from libscope.ai.exceptions import (
     LibScopeAIConfigError,
     map_ask_ai_exception,
 )
 from libscope.ai.prompts.system import BASE_SYSTEM_PROMPT
+from libscope.core.config import get_settings
 from libscope.core.logging import get_logger
+from libscope.core.security import validate_safe_url
 
 logger = get_logger("ai.client")
 
@@ -46,6 +51,30 @@ class AskAIClient:
         timeout = self.config.timeout
 
         try:
+            supported_providers = {"openrouter", "default", "openai", "anthropic", "google", "gemini", "groq", "azure"}
+            if prov_name not in supported_providers:
+                raise LibScopeAIConfigError(f"Unsupported AI provider '{prov_name}'.")
+            if prov_name == "azure":
+                if not self.config.azure_endpoint:
+                    raise LibScopeAIConfigError("Azure OpenAI requires AZURE_OPENAI_ENDPOINT.")
+                if not self.config.azure_endpoint.lower().startswith("https://") or not validate_safe_url(
+                    self.config.azure_endpoint
+                ):
+                    raise LibScopeAIConfigError("Azure OpenAI endpoint is not permitted by the outbound URL policy.")
+            if self.config.base_url:
+                if prov_name not in {"openrouter", "default", "openai"}:
+                    raise LibScopeAIConfigError(
+                        f"Custom base URLs are supported only for OpenAI-compatible providers, not '{prov_name}'."
+                    )
+                try:
+                    scheme = urlsplit(self.config.base_url).scheme.lower()
+                except ValueError as exc:
+                    raise LibScopeAIConfigError("Configured AI base URL is invalid.") from exc
+                if scheme != "https" and get_settings().environment.lower() == "production":
+                    raise LibScopeAIConfigError("Custom AI base URLs must use HTTPS in production.")
+                if not validate_safe_url(self.config.base_url):
+                    raise LibScopeAIConfigError("Configured AI base URL is not permitted by the outbound URL policy.")
+
             from ask_ai import Anthropic, Azure, Google, Groq, OpenAI, OpenRouter
 
             if prov_name in ("openrouter", "default"):
@@ -59,18 +88,66 @@ class AskAIClient:
             elif prov_name == "groq":
                 self._provider_instance = Groq(api_key=key, model=model, timeout=timeout)
             elif prov_name == "azure":
-                self._provider_instance = Azure(api_key=key, model=model, timeout=timeout)
-            else:
-                logger.warning(f"Unrecognized provider '{prov_name}', defaulting to OpenRouter")
-                self._provider_instance = OpenRouter(api_key=key, model=model, timeout=timeout)
+                self._provider_instance = Azure(
+                    api_key=key,
+                    model=self.config.azure_deployment or model,
+                    deployment_name=self.config.azure_deployment,
+                    endpoint=self.config.azure_endpoint,
+                    api_version=self.config.azure_api_version,
+                    timeout=timeout,
+                )
+
+            if self.config.base_url:
+                self._configure_openai_compatible_base_url(self._provider_instance, key, timeout)
 
             logger.info(f"Initialized askai-python provider: {self._provider_instance.__class__.__name__} ({model})")
             return self._provider_instance
 
+        except LibScopeAIConfigError:
+            raise
         except Exception as exc:
             self._init_error = str(exc)
             logger.error(f"Failed to instantiate askai-python provider '{prov_name}': {exc}")
             raise map_ask_ai_exception(exc, provider_name=prov_name) from exc
+
+    def _configure_openai_compatible_base_url(self, provider: Any, api_key: str | None, timeout: float) -> None:
+        import openai
+
+        base_url = self.config.base_url
+
+        def validate_sync_request(request: httpx.Request) -> None:
+            if not validate_safe_url(str(request.url)):
+                raise httpx.RequestError("Outbound AI URL rejected by SSRF policy", request=request)
+
+        async def validate_async_request(request: httpx.Request) -> None:
+            allowed = await asyncio.to_thread(validate_safe_url, str(request.url))
+            if not allowed:
+                raise httpx.RequestError("Outbound AI URL rejected by SSRF policy", request=request)
+
+        sync_client = httpx.Client(
+            timeout=timeout,
+            follow_redirects=False,
+            event_hooks={"request": [validate_sync_request]},
+        )
+        async_client = httpx.AsyncClient(
+            timeout=timeout,
+            follow_redirects=False,
+            event_hooks={"request": [validate_async_request]},
+        )
+        provider.client = openai.OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=timeout,
+            max_retries=0,
+            http_client=sync_client,
+        )
+        provider._async_client = openai.AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=timeout,
+            max_retries=0,
+            http_client=async_client,
+        )
 
     async def ask_async(
         self,
@@ -93,8 +170,7 @@ class AskAIClient:
             "timeout": self.config.timeout,
             "retry": self.config.retry_count,
         }
-        if max_tokens:
-            kwargs["max_tokens"] = max_tokens
+        kwargs["max_tokens"] = max_tokens if max_tokens is not None else self.config.max_tokens
         if response_model is not None:
             kwargs["response_model"] = response_model
             kwargs["validation_retries"] = self.config.validation_retries
@@ -127,6 +203,7 @@ class AskAIClient:
             "temperature": temp,
             "timeout": self.config.timeout,
             "retry": self.config.retry_count,
+            "max_tokens": self.config.max_tokens,
         }
         if response_model is not None:
             kwargs["response_model"] = response_model
@@ -145,4 +222,3 @@ class AskAIClient:
 
 # Backwards compatibility alias
 AIClient = AskAIClient
-
