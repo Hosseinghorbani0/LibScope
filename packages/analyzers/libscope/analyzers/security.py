@@ -247,3 +247,4 @@ class SecurityAnalyzer:
             status=status_value,
             error=error_message,
         )
+
