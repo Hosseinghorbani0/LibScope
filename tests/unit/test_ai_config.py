@@ -47,3 +47,4 @@ def test_explicit_ai_key_overrides_provider_specific_key(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "openai-test")
 
     assert Settings(_env_file=None).effective_ai_api_key == "explicit-test"
+
