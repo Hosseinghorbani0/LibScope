@@ -70,3 +70,4 @@ def test_cancelled_analysis_marks_job_cancelled(monkeypatch):
 
     asyncio.run(cancel_analysis())
     assert states == [("job-3", "cancelled", "Analysis was cancelled.", None)]
+
