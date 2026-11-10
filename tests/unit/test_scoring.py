@@ -83,3 +83,16 @@ def test_scoring_penalizes_critical_vulnerabilities():
     assert res.dimensions["security"].score <= 30.0
     assert "Critical/High" in res.dimensions["security"].explanation
 
+
+def test_failed_security_lookup_is_not_scored_as_clean():
+    res = ScoringEngine().calculate_score(
+        package_name="unknown-security-status",
+        monthly_downloads=20000,
+        stars=500,
+        days_since_commit=20,
+        has_license=True,
+        security_lookup_status="failed",
+    )
+
+    assert res.dimensions["security"].score is None
+    assert "inferred" in res.dimensions["security"].explanation
