@@ -95,3 +95,4 @@ def test_markdown_report_does_not_present_unchecked_security_as_clean():
     assert "**Known Vulnerabilities (OSV):** `Not verified`" in report
     assert "No clean result is available" in report
     assert "**Overall Rating:** `INSUFFICIENT_DATA`" in report
+
