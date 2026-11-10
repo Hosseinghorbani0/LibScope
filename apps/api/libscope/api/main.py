@@ -12,8 +12,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from libscope.analyzers.competitor import CompetitorAnalyzer
+from libscope.analyzers.health import normalize_health_rating
+from libscope.analyzers.historical import HistoricalAnalyzer
 from libscope.api.demo import seed_demo_data
 from libscope.api.orchestrator import run_package_analysis
+from libscope.api.security import rate_limit_expensive_requests, require_api_key
 from libscope.core.config import get_settings
 from libscope.core.database import get_db, init_db
 from libscope.core.logging import get_logger, setup_logging
@@ -26,6 +29,7 @@ from libscope.core.models import (
     Package,
     Release,
     Report,
+    Repository,
     Score,
     SecurityFinding,
 )
@@ -36,6 +40,7 @@ from libscope.core.schemas import (
     AnalysisJobRead,
     CompareRequest,
     CompareResponse,
+    DashboardSummaryRead,
     HealthFindingRead,
     MetricSnapshotRead,
     PackageDetailRead,
@@ -43,17 +48,37 @@ from libscope.core.schemas import (
     ReleaseRead,
     ReportGenerateRequest,
     ReportRead,
+    ScoreHistoryPointRead,
     ScoreRead,
     SecurityFindingRead,
 )
 from libscope.providers.registry import get_provider_registry
 from libscope.reporting.generator import ReportGenerator
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
 settings = get_settings()
 setup_logging(level=settings.log_level)
 logger = get_logger("api.main")
+
+
+def _snapshot_metadata(snapshot: MetricSnapshot | None) -> dict:
+    if not snapshot or not snapshot.raw_data:
+        return {}
+    try:
+        data = json.loads(snapshot.raw_data)
+    except (TypeError, json.JSONDecodeError):
+        logger.warning("Ignoring malformed metric snapshot metadata for snapshot %s", snapshot.id)
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _days_since(timestamp: datetime | None, now: datetime) -> int | None:
+    if timestamp is None:
+        return None
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=UTC)
+    return max(0, (now - timestamp).days)
 
 
 @asynccontextmanager
@@ -77,9 +102,9 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.parsed_cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
@@ -118,6 +143,8 @@ async def trigger_analysis(
     background_tasks: BackgroundTasks,
     run_sync: bool = Query(default=False, description="Run synchronously and wait for completion (for CLI/scripts)"),
     db: Session = Depends(get_db),
+    _auth: None = Depends(require_api_key),
+    _rate_limit: None = Depends(rate_limit_expensive_requests),
 ):
     job_id = str(uuid.uuid4())
     job = AnalysisJob(
@@ -178,6 +205,25 @@ def list_packages(
     return query.order_by(desc(Package.updated_at)).offset(offset).limit(limit).all()
 
 
+@app.get("/api/v1/dashboard/summary", response_model=DashboardSummaryRead, tags=["Dashboard"])
+def get_dashboard_summary(
+    recent_limit: int = Query(default=5, ge=1, le=10),
+    db: Session = Depends(get_db),
+):
+    return {
+        "total_packages": db.query(func.count(Package.id)).scalar() or 0,
+        "scored_packages": db.query(func.count(func.distinct(Score.package_id))).scalar() or 0,
+        "linked_repositories": db.query(func.count(Repository.id)).scalar() or 0,
+        "latest_package_update": db.query(func.max(Package.updated_at)).scalar(),
+        "recent_jobs": (
+            db.query(AnalysisJob)
+            .order_by(desc(AnalysisJob.created_at), desc(AnalysisJob.id))
+            .limit(recent_limit)
+            .all()
+        ),
+    }
+
+
 @app.get("/api/v1/packages/{package_id}", response_model=PackageDetailRead, tags=["Packages"])
 def get_package_detail(package_id: int, db: Session = Depends(get_db)):
     pkg = db.query(Package).filter_by(id=package_id).first()
@@ -191,7 +237,7 @@ def get_package_detail(package_id: int, db: Session = Depends(get_db)):
     vuln_count = db.query(SecurityFinding).filter_by(package_id=package_id).count()
 
     latest_snap = db.query(MetricSnapshot).filter_by(package_id=package_id).order_by(desc(MetricSnapshot.recorded_at)).first()
-    monthly_dl = latest_snap.downloads_count if latest_snap else 0
+    monthly_dl = latest_snap.downloads_count if latest_snap else None
 
     return PackageDetailRead(
         id=pkg.id,
@@ -215,11 +261,65 @@ def get_package_detail(package_id: int, db: Session = Depends(get_db)):
 
 
 @app.get("/api/v1/packages/{package_id}/analytics", response_model=list[MetricSnapshotRead], tags=["Analytics"])
-def get_package_analytics(package_id: int, db: Session = Depends(get_db)):
+def get_package_analytics(
+    package_id: int,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
     pkg = db.query(Package).filter_by(id=package_id).first()
     if not pkg:
         raise HTTPException(status_code=404, detail="Package not found")
-    return db.query(MetricSnapshot).filter_by(package_id=package_id).order_by(MetricSnapshot.recorded_at).all()
+    return (
+        db.query(MetricSnapshot)
+        .filter_by(package_id=package_id)
+        .order_by(MetricSnapshot.recorded_at, MetricSnapshot.id)
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+
+@app.get("/api/v1/packages/{package_id}/history", tags=["Analytics"])
+def get_package_history(
+    package_id: int,
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    pkg = db.query(Package).filter_by(id=package_id).first()
+    if not pkg:
+        raise HTTPException(status_code=404, detail="Package not found")
+
+    total = db.query(MetricSnapshot).filter_by(package_id=package_id).count()
+    snapshots = (
+        db.query(MetricSnapshot)
+        .filter_by(package_id=package_id)
+        .order_by(desc(MetricSnapshot.recorded_at), desc(MetricSnapshot.id))
+        .limit(limit)
+        .all()
+    )
+    snapshots.reverse()
+    result = HistoricalAnalyzer().analyze_snapshots(
+        pkg.name,
+        [
+            {
+                "recorded_at": snapshot.recorded_at,
+                "downloads_count": snapshot.downloads_count,
+                "stars_count": snapshot.stars_count,
+                "forks_count": snapshot.forks_count,
+            }
+            for snapshot in snapshots
+        ],
+    )
+    return {
+        "package_name": result.package_name,
+        "analyzed_at": result.analyzed_at,
+        "total_snapshots_recorded": total,
+        "returned_snapshots": len(snapshots),
+        "deltas": [delta.__dict__ for delta in result.deltas],
+        "historical_chart_points": result.historical_chart_points,
+        "summary": result.summary,
+    }
 
 
 @app.get("/api/v1/packages/{package_id}/health", response_model=list[HealthFindingRead], tags=["Health"])
@@ -238,6 +338,24 @@ def get_package_adoption(package_id: int, db: Session = Depends(get_db)):
     return db.query(AdoptionEvidence).filter_by(package_id=package_id).order_by(desc(AdoptionEvidence.stars)).all()
 
 
+@app.get("/api/v1/packages/{package_id}/adoption/status", tags=["Adoption"])
+def get_package_adoption_status(package_id: int, db: Session = Depends(get_db)):
+    pkg = db.query(Package).filter_by(id=package_id).first()
+    if not pkg:
+        raise HTTPException(status_code=404, detail="Package not found")
+    snapshot = (
+        db.query(MetricSnapshot)
+        .filter_by(package_id=package_id)
+        .order_by(desc(MetricSnapshot.recorded_at))
+        .first()
+    )
+    metadata = _snapshot_metadata(snapshot)
+    return {
+        "status": metadata.get("adoption_status", "not_checked"),
+        "caveats": metadata.get("adoption_caveats", []),
+    }
+
+
 @app.get("/api/v1/packages/{package_id}/security", response_model=list[SecurityFindingRead], tags=["Security"])
 def get_package_security(package_id: int, db: Session = Depends(get_db)):
     pkg = db.query(Package).filter_by(id=package_id).first()
@@ -246,12 +364,43 @@ def get_package_security(package_id: int, db: Session = Depends(get_db)):
     return db.query(SecurityFinding).filter_by(package_id=package_id).all()
 
 
-@app.get("/api/v1/packages/{package_id}/releases", response_model=list[ReleaseRead], tags=["Releases"])
-def get_package_releases(package_id: int, db: Session = Depends(get_db)):
+@app.get("/api/v1/packages/{package_id}/security/status", tags=["Security"])
+def get_package_security_status(package_id: int, db: Session = Depends(get_db)):
     pkg = db.query(Package).filter_by(id=package_id).first()
     if not pkg:
         raise HTTPException(status_code=404, detail="Package not found")
-    return db.query(Release).filter_by(package_id=package_id).order_by(desc(Release.release_date)).all()
+    snapshot = (
+        db.query(MetricSnapshot)
+        .filter_by(package_id=package_id)
+        .order_by(desc(MetricSnapshot.recorded_at))
+        .first()
+    )
+    metadata = _snapshot_metadata(snapshot)
+    return {
+        "status": metadata.get("security_status", "not_checked"),
+        "checked_at": metadata.get("security_checked_at"),
+        "caveats": metadata.get("security_caveats", []),
+    }
+
+
+@app.get("/api/v1/packages/{package_id}/releases", response_model=list[ReleaseRead], tags=["Releases"])
+def get_package_releases(
+    package_id: int,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    pkg = db.query(Package).filter_by(id=package_id).first()
+    if not pkg:
+        raise HTTPException(status_code=404, detail="Package not found")
+    return (
+        db.query(Release)
+        .filter_by(package_id=package_id)
+        .order_by(desc(Release.release_date), desc(Release.id))
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
 
 
 @app.get("/api/v1/packages/{package_id}/score", response_model=ScoreRead | None, tags=["Scoring"])
@@ -260,6 +409,30 @@ def get_package_score(package_id: int, db: Session = Depends(get_db)):
     if not pkg:
         raise HTTPException(status_code=404, detail="Package not found")
     return db.query(Score).filter_by(package_id=package_id).order_by(desc(Score.calculated_at)).first()
+
+
+@app.get(
+    "/api/v1/packages/{package_id}/score-history",
+    response_model=list[ScoreHistoryPointRead],
+    tags=["Scoring"],
+)
+def get_package_score_history(
+    package_id: int,
+    limit: int = Query(default=100, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    pkg = db.query(Package).filter_by(id=package_id).first()
+    if not pkg:
+        raise HTTPException(status_code=404, detail="Package not found")
+    history = (
+        db.query(Score)
+        .filter_by(package_id=package_id)
+        .order_by(desc(Score.calculated_at), desc(Score.id))
+        .limit(limit)
+        .all()
+    )
+    history.reverse()
+    return history
 
 
 @app.get("/api/v1/packages/{package_id}/ai", response_model=AIAnalysisRead | None, tags=["AI"])
@@ -272,7 +445,12 @@ def get_package_ai_analysis(package_id: int, db: Session = Depends(get_db)):
 
 # --- Competitor Comparison ---
 @app.post("/api/v1/compare", response_model=CompareResponse, tags=["Comparison"])
-def compare_packages(req: CompareRequest, db: Session = Depends(get_db)):
+def compare_packages(
+    req: CompareRequest,
+    db: Session = Depends(get_db),
+    _rate_limit: None = Depends(rate_limit_expensive_requests),
+):
+    comparison_time = datetime.now(UTC)
     packages: list[Package] = []
     if req.package_ids:
         packages = db.query(Package).filter(Package.id.in_(req.package_ids)).all()
@@ -294,22 +472,25 @@ def compare_packages(req: CompareRequest, db: Session = Depends(get_db)):
         repo = p.repository
         adoptions = db.query(AdoptionEvidence).filter_by(package_id=p.id).count()
         vulns = db.query(SecurityFinding).filter_by(package_id=p.id).count()
+        snapshot_metadata = _snapshot_metadata(latest_snap)
+        adoption_status = snapshot_metadata.get("adoption_status", "not_checked")
+        security_status = snapshot_metadata.get("security_status", "not_checked")
 
         pkg_data_list.append({
             "name": p.name,
             "ecosystem": p.ecosystem,
             "overall_score": latest_score.overall_score if latest_score else None,
             "confidence": latest_score.confidence_level if latest_score else "low",
-            "monthly_downloads": latest_snap.downloads_count if latest_snap else 0,
+            "monthly_downloads": latest_snap.downloads_count if latest_snap else None,
             "weekly_downloads": 0,
-            "stars": repo.stars if repo else 0,
-            "forks": repo.forks if repo else 0,
-            "open_issues": repo.open_issues if repo else 0,
+            "stars": repo.stars if repo else None,
+            "forks": repo.forks if repo else None,
+            "open_issues": repo.open_issues if repo else None,
             "latest_version": p.latest_version,
-            "days_since_last_release": None,
-            "days_since_last_commit": None,
-            "confirmed_adoptions_count": adoptions,
-            "vulnerabilities_count": vulns,
+            "days_since_last_release": _days_since(repo.last_release_at if repo else None, comparison_time),
+            "days_since_last_commit": _days_since(repo.last_commit_at if repo else None, comparison_time),
+            "confirmed_adoptions_count": adoptions if adoption_status == "checked" else None,
+            "vulnerabilities_count": vulns if security_status == "checked" else None,
             "license": p.license,
         })
 
@@ -341,7 +522,12 @@ def compare_packages(req: CompareRequest, db: Session = Depends(get_db)):
 
 # --- Reports ---
 @app.post("/api/v1/reports/generate", response_model=ReportRead, tags=["Reports"])
-def generate_report(req: ReportGenerateRequest, db: Session = Depends(get_db)):
+def generate_report(
+    req: ReportGenerateRequest,
+    db: Session = Depends(get_db),
+    _auth: None = Depends(require_api_key),
+    _rate_limit: None = Depends(rate_limit_expensive_requests),
+):
     pkg = db.query(Package).filter_by(id=req.package_id).first()
     if not pkg:
         raise HTTPException(status_code=404, detail="Package not found")
@@ -349,8 +535,11 @@ def generate_report(req: ReportGenerateRequest, db: Session = Depends(get_db)):
     score = db.query(Score).filter_by(package_id=pkg.id).order_by(desc(Score.calculated_at)).first()
     repo = pkg.repository
     snap = db.query(MetricSnapshot).filter_by(package_id=pkg.id).order_by(desc(MetricSnapshot.recorded_at)).first()
+    snapshot_metadata = _snapshot_metadata(snap)
     health_findings = db.query(HealthFinding).filter_by(package_id=pkg.id).all()
     sec_findings = db.query(SecurityFinding).filter_by(package_id=pkg.id).all()
+    security_status = snapshot_metadata.get("security_status", "not_checked")
+    security_counts_available = security_status in ("checked", "partial") or bool(sec_findings)
     adoptions = db.query(AdoptionEvidence).filter_by(package_id=pkg.id).order_by(desc(AdoptionEvidence.stars)).all()
     ai_item = db.query(AIAnalysis).filter_by(package_id=pkg.id).order_by(desc(AIAnalysis.generated_at)).first()
 
@@ -374,21 +563,23 @@ def generate_report(req: ReportGenerateRequest, db: Session = Depends(get_db)):
         "repository": {
             "full_name": repo.full_name if repo else "N/A",
             "url": repo.url if repo else "#",
-            "stars": repo.stars if repo else 0,
-            "forks": repo.forks if repo else 0,
-            "open_issues": repo.open_issues if repo else 0,
-            "watchers": repo.watchers if repo else 0,
+            "stars": repo.stars if repo else None,
+            "forks": repo.forks if repo else None,
+            "open_issues": repo.open_issues if repo else None,
+            "watchers": repo.watchers if repo else None,
             "is_archived": repo.is_archived if repo else False,
             "is_fork": repo.is_fork if repo else False,
         },
         "downloads": {
-            "monthly": snap.downloads_count if snap else 0,
-            "weekly": 0,
-            "daily": 0,
+            "monthly": snap.downloads_count if snap else None,
+            "weekly": snapshot_metadata.get("weekly"),
+            "daily": snapshot_metadata.get("daily"),
             "growth_rate_pct": snap.growth_rate if snap else None,
-            "mirror_inclusive": True,
+            "mirror_inclusive": snapshot_metadata.get("mirror_inclusive"),
         },
         "adoption": {
+            "status": snapshot_metadata.get("adoption_status", "not_checked"),
+            "caveats": snapshot_metadata.get("adoption_caveats", []),
             "confirmed_dependencies_count": sum(1 for a in adoptions if "dependency" in a.evidence_type.lower()),
             "confirmed_source_usage_count": sum(1 for a in adoptions if "source-code" in a.evidence_type.lower()),
             "possible_usage_count": sum(1 for a in adoptions if "possible" in a.evidence_type.lower()),
@@ -407,11 +598,18 @@ def generate_report(req: ReportGenerateRequest, db: Session = Depends(get_db)):
             ],
         },
         "security": {
-            "vulnerabilities_count": len(sec_findings),
-            "critical_count": sum(1 for s in sec_findings if s.severity == "CRITICAL"),
-            "high_count": sum(1 for s in sec_findings if s.severity == "HIGH"),
-            "medium_count": sum(1 for s in sec_findings if s.severity == "MEDIUM"),
-            "low_count": sum(1 for s in sec_findings if s.severity == "LOW"),
+            "status": security_status,
+            "checked_at": snapshot_metadata.get("security_checked_at"),
+            "caveats": snapshot_metadata.get("security_caveats", []),
+            "vulnerabilities_count": (
+                len(sec_findings)
+                if snapshot_metadata.get("security_status") in ("checked", "partial") or sec_findings
+                else None
+            ),
+            "critical_count": sum(1 for s in sec_findings if s.severity == "CRITICAL") if security_counts_available else None,
+            "high_count": sum(1 for s in sec_findings if s.severity == "HIGH") if security_counts_available else None,
+            "medium_count": sum(1 for s in sec_findings if s.severity == "MEDIUM") if security_counts_available else None,
+            "low_count": sum(1 for s in sec_findings if s.severity == "LOW") if security_counts_available else None,
             "vulnerabilities": [
                 {
                     "identifier": s.identifier,
@@ -419,12 +617,13 @@ def generate_report(req: ReportGenerateRequest, db: Session = Depends(get_db)):
                     "affected_versions": s.affected_range,
                     "remediation": s.remediation,
                     "reference_url": s.reference_url,
+                    "title": s.title,
                 }
                 for s in sec_findings
             ],
         },
         "health": {
-            "overall_health_rating": "healthy",
+            "overall_health_rating": normalize_health_rating(findings=health_findings),
             "findings": [
                 {
                     "category": h.category,
@@ -473,20 +672,25 @@ def get_report(report_id: str, db: Session = Depends(get_db)):
 
 # --- Demo Mode ---
 @app.post("/api/v1/demo/seed", tags=["Demo Mode"])
-def seed_demo():
+def seed_demo(
+    _auth: None = Depends(require_api_key),
+    _rate_limit: None = Depends(rate_limit_expensive_requests),
+):
+    if settings.environment.lower() == "production" and not settings.enable_demo_mode:
+        raise HTTPException(status_code=404, detail="Demo mode is disabled")
     ids = seed_demo_data()
     return {"message": "Demo data seeded successfully", "package_ids": ids}
 
 
-# Serve React Frontend Build if present
-_dist_dir = Path(__file__).resolve().parent.parent.parent / "dashboard" / "dist"
-if _dist_dir.is_dir():
-    app.mount("/assets", StaticFiles(directory=str(_dist_dir / "assets")), name="assets")
+# Serve the framework-free dashboard bundled with the API package.
+_dashboard_dir = Path(__file__).resolve().parent / "dashboard_static"
+app.mount(
+    "/dashboard-assets",
+    StaticFiles(directory=str(_dashboard_dir)),
+    name="dashboard-assets",
+)
 
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_spa(full_path: str):
-        file_path = _dist_dir / full_path
-        if file_path.is_file():
-            return FileResponse(file_path)
-        return FileResponse(_dist_dir / "index.html")
 
+@app.get("/", include_in_schema=False)
+def dashboard_index():
+    return FileResponse(_dashboard_dir / "index.html")
