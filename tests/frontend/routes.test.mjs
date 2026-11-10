@@ -54,3 +54,4 @@ test("serializes package routes and restores navigation without duplicate events
     else globalThis.window = previousWindow;
   }
 });
+
