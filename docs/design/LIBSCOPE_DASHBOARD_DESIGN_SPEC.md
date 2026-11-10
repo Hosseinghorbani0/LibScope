@@ -160,3 +160,4 @@ Use the same assets in the dashboard and HTML report. Document asset variants an
 - FastAPI-served assets are present in wheel and sdist; no frontend install is required for end users.
 - Critical workflows, error states, keyboard access, responsive layouts, and package distributions are tested.
 - No commit, push, release, or Git-history rewrite occurs without explicit authorization.
+
