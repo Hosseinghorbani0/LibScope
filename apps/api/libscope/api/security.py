@@ -54,3 +54,4 @@ def rate_limit_expensive_requests(request: Request) -> None:
         stale_keys = [entry for entry, values in _request_times.items() if not values or values[-1] <= cutoff]
         for stale_key in stale_keys:
             _request_times.pop(stale_key, None)
+
