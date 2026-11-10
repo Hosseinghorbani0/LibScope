@@ -105,3 +105,4 @@ export function hasTranslation(key) {
 export function supportedLocales() {
   return [...SUPPORTED_LOCALES];
 }
+
