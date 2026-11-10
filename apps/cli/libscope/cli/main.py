@@ -7,6 +7,7 @@ import json
 
 import typer
 from libscope.analyzers.competitor import CompetitorAnalyzer
+from libscope.analyzers.health import normalize_health_rating
 from libscope.api.demo import seed_demo_data
 from libscope.api.orchestrator import run_package_analysis
 from libscope.core.config import get_settings
@@ -75,6 +76,15 @@ def analyze(
         adoptions = session.query(AdoptionEvidence).filter_by(package_id=pkg.id).all()
         vulns = session.query(SecurityFinding).filter_by(package_id=pkg.id).all()
         ai_analysis = session.query(AIAnalysis).filter_by(package_id=pkg.id).order_by(AIAnalysis.generated_at.desc()).first()
+        snapshot_metadata = {}
+        if snap and snap.raw_data:
+            try:
+                snapshot_metadata = json.loads(snap.raw_data)
+            except json.JSONDecodeError:
+                snapshot_metadata = {}
+        if not isinstance(snapshot_metadata, dict):
+            snapshot_metadata = {}
+        security_status = snapshot_metadata.get("security_status", "not_checked")
 
         if as_json:
             out = {
@@ -84,10 +94,21 @@ def analyze(
                 "license": pkg.license,
                 "score": latest_score.overall_score if latest_score else None,
                 "confidence": latest_score.confidence_level if latest_score else "low",
-                "monthly_downloads": snap.downloads_count if snap else 0,
+                "monthly_downloads": snap.downloads_count if snap else None,
                 "stars": repo.stars if repo else 0,
-                "verified_adoptions": len(adoptions),
-                "vulnerabilities": len(vulns),
+                "verified_adoptions": sum(
+                    1
+                    for item in adoptions
+                    if item.evidence_type in (
+                        "Confirmed dependency declaration",
+                        "Confirmed source-code usage",
+                    )
+                ),
+                "adoption_status": snapshot_metadata.get("adoption_status", "not_checked"),
+                "security_status": security_status,
+                "vulnerabilities": (
+                    len(vulns) if security_status in ("checked", "partial") or vulns else None
+                ),
             }
             console.print_json(json.dumps(out))
             return
@@ -245,6 +266,16 @@ def report(
         sec_findings = session.query(SecurityFinding).filter_by(package_id=pkg.id).all()
         adoptions = session.query(AdoptionEvidence).filter_by(package_id=pkg.id).order_by(AdoptionEvidence.stars.desc()).all()
         ai_item = session.query(AIAnalysis).filter_by(package_id=pkg.id).order_by(AIAnalysis.generated_at.desc()).first()
+        snapshot_metadata = {}
+        if snap and snap.raw_data:
+            try:
+                snapshot_metadata = json.loads(snap.raw_data)
+            except json.JSONDecodeError:
+                snapshot_metadata = {}
+        if not isinstance(snapshot_metadata, dict):
+            snapshot_metadata = {}
+        security_status = snapshot_metadata.get("security_status", "not_checked")
+        security_counts_available = security_status in ("checked", "partial") or bool(sec_findings)
 
         data_payload = {
             "package": {
@@ -266,19 +297,23 @@ def report(
             "repository": {
                 "full_name": repo.full_name if repo else "N/A",
                 "url": repo.url if repo else "#",
-                "stars": repo.stars if repo else 0,
-                "forks": repo.forks if repo else 0,
-                "open_issues": repo.open_issues if repo else 0,
-                "watchers": repo.watchers if repo else 0,
+                "stars": repo.stars if repo else None,
+                "forks": repo.forks if repo else None,
+                "open_issues": repo.open_issues if repo else None,
+                "watchers": repo.watchers if repo else None,
                 "is_archived": repo.is_archived if repo else False,
                 "is_fork": repo.is_fork if repo else False,
             },
             "downloads": {
-                "monthly": snap.downloads_count if snap else 0,
+                "monthly": snap.downloads_count if snap else None,
+                "weekly": snapshot_metadata.get("weekly"),
+                "daily": snapshot_metadata.get("daily"),
                 "growth_rate_pct": snap.growth_rate if snap else None,
-                "mirror_inclusive": True,
+                "mirror_inclusive": snapshot_metadata.get("mirror_inclusive"),
             },
             "adoption": {
+                "status": snapshot_metadata.get("adoption_status", "not_checked"),
+                "caveats": snapshot_metadata.get("adoption_caveats", []),
                 "confirmed_dependencies_count": sum(1 for a in adoptions if "dependency" in a.evidence_type.lower()),
                 "confirmed_source_usage_count": sum(1 for a in adoptions if "source-code" in a.evidence_type.lower()),
                 "possible_usage_count": sum(1 for a in adoptions if "possible" in a.evidence_type.lower()),
@@ -297,11 +332,16 @@ def report(
                 ],
             },
             "security": {
-                "vulnerabilities_count": len(sec_findings),
-                "critical_count": sum(1 for s in sec_findings if s.severity == "CRITICAL"),
-                "high_count": sum(1 for s in sec_findings if s.severity == "HIGH"),
-                "medium_count": sum(1 for s in sec_findings if s.severity == "MEDIUM"),
-                "low_count": sum(1 for s in sec_findings if s.severity == "LOW"),
+                "status": security_status,
+                "checked_at": snapshot_metadata.get("security_checked_at"),
+                "caveats": snapshot_metadata.get("security_caveats", []),
+                "vulnerabilities_count": (
+                    len(sec_findings) if security_status in ("checked", "partial") or sec_findings else None
+                ),
+                "critical_count": sum(1 for s in sec_findings if s.severity == "CRITICAL") if security_counts_available else None,
+                "high_count": sum(1 for s in sec_findings if s.severity == "HIGH") if security_counts_available else None,
+                "medium_count": sum(1 for s in sec_findings if s.severity == "MEDIUM") if security_counts_available else None,
+                "low_count": sum(1 for s in sec_findings if s.severity == "LOW") if security_counts_available else None,
                 "vulnerabilities": [
                     {
                         "identifier": s.identifier,
@@ -309,12 +349,13 @@ def report(
                         "affected_versions": s.affected_range,
                         "remediation": s.remediation,
                         "reference_url": s.reference_url,
+                        "title": s.title,
                     }
                     for s in sec_findings
                 ],
             },
             "health": {
-                "overall_health_rating": "healthy",
+                "overall_health_rating": normalize_health_rating(findings=health_findings),
                 "findings": [
                     {
                         "category": h.category,
@@ -424,4 +465,3 @@ def demo():
 
 if __name__ == "__main__":
     app()
-
