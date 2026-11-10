@@ -21,3 +21,4 @@ def dispose_test_database():
     if database._engine is not None:
         database._engine.dispose()
     _test_database_dir.cleanup()
+
