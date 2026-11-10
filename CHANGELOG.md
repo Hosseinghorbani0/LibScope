@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- A bounded historical-analysis API endpoint with recent snapshot deltas and chart points.
+- Optional `ai` installation extra for the provider SDKs supported by `askai-python`.
+
+### Changed
+- Replaced the React/TypeScript dashboard with a responsive, framework-free HTML/CSS/JavaScript interface served directly by FastAPI; frontend Node.js tooling is no longer required.
+- Production analysis, report-generation, and demo-seeding routes require a configured bearer API key and are rate-limited.
+- The dashboard can accept an operator-provided API key without persisting it in browser storage.
+- Package comparisons are rate-limited, and analytics snapshots support bounded pagination.
+- Dependency adoption is confirmed from supported manifest contents rather than repository filenames alone.
+- Security lookup and report output distinguish clean results from incomplete or unavailable checks.
+- Dashboard now handles failed package loads, queued-job duplicate submissions, and absent comparison scores.
+
+### Fixed
+- HTML reports escape untrusted data and only render validated HTTPS references.
+- Markdown reports tolerate missing metrics and no longer represent an unperformed security check as clean.
+- Repeated analyses update existing release records instead of inserting duplicate versions.
+
+### Security
+- Validated custom OpenAI-compatible and Azure AI endpoints against the outbound URL policy.
+
+---
+
 ## [0.1.0] - 2026-11-08
 
 ### Added
@@ -42,4 +67,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - REST API with FastAPI, async background orchestration, and health checks.
   - Interactive Single-Page Application (SPA) dashboard built with React 18, TypeScript, Vite, Tailwind CSS, and Lucide icons.
   - Rich CLI built with Typer for terminal diagnostics, comparisons, reports, and offline demo benchmarking.
-
