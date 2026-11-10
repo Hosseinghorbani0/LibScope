@@ -44,6 +44,7 @@ dependencies = [
     "rich>=13.7.0",
     "aiosqlite>=0.20.0",
     "askai-python>=0.6.0",
+    "packaging>=23.0",
 ]
 
 [project.optional-dependencies]
@@ -54,13 +55,43 @@ dev = [
     "ruff>=0.3.0",
     "mypy>=1.9.0",
 ]
+ai = [
+    "askai-python[all]>=0.6.0",
+]
 
 [project.scripts]
 libscope = "libscope.cli.main:app"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["libscope*", "packages*", "apps*"]
+[tool.setuptools]
+packages = [
+    "libscope",
+    "libscope.ai",
+    "libscope.ai.prompts",
+    "libscope.ai.services",
+    "libscope.analyzers",
+    "libscope.api",
+    "libscope.cli",
+    "libscope.core",
+    "libscope.providers",
+    "libscope.reporting",
+    "libscope.scoring",
+]
+
+[tool.setuptools.package-dir]
+libscope = "libscope"
+"libscope.ai" = "packages/ai/libscope/ai"
+"libscope.ai.prompts" = "packages/ai/libscope/ai/prompts"
+"libscope.ai.services" = "packages/ai/libscope/ai/services"
+"libscope.analyzers" = "packages/analyzers/libscope/analyzers"
+"libscope.api" = "apps/api/libscope/api"
+"libscope.cli" = "apps/cli/libscope/cli"
+"libscope.core" = "packages/core/libscope/core"
+"libscope.providers" = "packages/providers/libscope/providers"
+"libscope.reporting" = "packages/reporting/libscope/reporting"
+"libscope.scoring" = "packages/scoring/libscope/scoring"
+
+[tool.setuptools.package-data]
+"libscope.api" = ["dashboard_static/*.html", "dashboard_static/*.js", "dashboard_static/*.css", "dashboard_static/*.svg", "dashboard_static/locales/*.json"]
 
 [tool.pytest.ini_options]
 minversion = "7.0"
