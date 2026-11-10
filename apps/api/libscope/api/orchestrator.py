@@ -2,6 +2,7 @@
 LibScope Analysis Orchestrator.
 Executes end-to-end multi-provider collection, analysis, scoring, and storage.
 """
+import asyncio
 import json
 from datetime import UTC, datetime
 
@@ -20,6 +21,7 @@ from libscope.core.models import (
     HealthFinding,
     MetricSnapshot,
     Package,
+    Release,
     Repository,
     Score,
     SecurityFinding,
@@ -32,6 +34,53 @@ logger = get_logger("api.orchestrator")
 
 
 async def run_package_analysis(
+    package_name: str,
+    ecosystem: str = "pypi",
+    enable_ai: bool = False,
+    job_id: str | None = None,
+) -> Package:
+    """Run analysis under a bounded deadline and finalize its job on every failure."""
+    settings = get_settings()
+    try:
+        async with asyncio.timeout(settings.analysis_timeout_seconds):
+            return await _run_package_analysis(package_name, ecosystem, enable_ai, job_id)
+    except asyncio.CancelledError:
+        _finish_job(job_id, "cancelled", "Analysis was cancelled.", None)
+        raise
+    except TimeoutError:
+        _finish_job(
+            job_id,
+            "failed",
+            "Analysis timed out.",
+            "Analysis exceeded the configured time limit. Please retry.",
+        )
+        raise
+    except Exception:
+        logger.exception("Analysis failed for package %s in ecosystem %s", package_name, ecosystem)
+        _finish_job(
+            job_id,
+            "failed",
+            "Analysis failed.",
+            "Analysis failed unexpectedly. Please retry or inspect service logs.",
+        )
+        raise
+
+
+def _finish_job(job_id: str | None, state: str, message: str, error: str | None) -> None:
+    if not job_id:
+        return
+    with db_session() as session:
+        job = session.query(AnalysisJob).filter_by(id=job_id).first()
+        if not job or job.status in {"completed", "failed", "cancelled"}:
+            return
+        job.status = state
+        job.progress = 100
+        job.step_message = message
+        job.error_message = error
+        job.completed_at = datetime.now(UTC)
+
+
+async def _run_package_analysis(
     package_name: str,
     ecosystem: str = "pypi",
     enable_ai: bool = False,
@@ -50,6 +99,8 @@ async def run_package_analysis(
         with db_session() as s:
             job = s.query(AnalysisJob).filter_by(id=job_id).first()
             if job:
+                if job.status in ("completed", "failed", "cancelled") and status != job.status:
+                    return
                 job.status = status
                 job.progress = progress
                 job.step_message = msg
@@ -68,7 +119,7 @@ async def run_package_analysis(
     provider = registry.get(ecosystem)
     if not provider:
         err = f"Unsupported ecosystem '{ecosystem}'"
-        update_job("failed", 100, "Failed", error=err)
+        update_job("failed", 100, "Unsupported ecosystem", error="Unsupported ecosystem.")
         raise ValueError(err)
 
     try:
@@ -76,7 +127,7 @@ async def run_package_analysis(
     except Exception as exc:
         err = f"Failed to retrieve package '{package_name}' from {ecosystem}: {str(exc)}"
         logger.error(err)
-        update_job("failed", 100, "Registry lookup failed", error=err)
+        update_job("failed", 100, "Registry lookup failed", error="Package could not be retrieved.")
         raise RuntimeError(err) from exc
 
     update_job("running", 25, "Fetching release history and download trends...")
@@ -92,11 +143,14 @@ async def run_package_analysis(
     repo_intelligence = None
     community_profile = {}
     adoption_raw_findings = []
+    adoption_search_status = "not_applicable"
+    adoption_search_caveats: list[str] = []
 
     target_repo_url = metadata.repository_url
     gh_provider = GitHubProvider()
 
     if target_repo_url and "github.com" in target_repo_url:
+        adoption_search_status = "unavailable"
         update_job("running", 45, "Inspecting GitHub repository and community profile...")
         try:
             repo_data = await gh_provider.fetch_repository(target_repo_url)
@@ -111,7 +165,14 @@ async def run_package_analysis(
         try:
             adoption_raw_findings = await gh_provider.search_code_adoption(package_name, max_results=15)
         except Exception as exc:
+            adoption_search_status = "failed"
             logger.warning(f"Adoption code search failed: {exc}")
+        else:
+            adoption_search_status = gh_provider.code_search_status
+        if adoption_search_status != "checked":
+            adoption_search_caveats.append(
+                f"GitHub adoption discovery status is '{adoption_search_status}'; no-adoption conclusions are not verified."
+            )
 
     # 4. Process adoption discovery
     target_full_name = repo_data.full_name if repo_data else None
@@ -156,6 +217,7 @@ async def run_package_analysis(
         vulnerability_count=len(sec_report.vulnerabilities),
         critical_or_high=sec_report.critical_count + sec_report.high_count,
         has_security_policy=has_sec_policy,
+        security_lookup_status=sec_report.status,
     )
 
     # 8. AI Analyst (Optional)
@@ -218,6 +280,19 @@ async def run_package_analysis(
 
         package_id = pkg.id
 
+        for release in releases:
+            release_record = session.query(Release).filter_by(
+                package_id=pkg.id,
+                version=release.version,
+            ).first()
+            if release_record is None:
+                release_record = Release(package_id=pkg.id, version=release.version)
+                session.add(release_record)
+            release_record.release_date = release.release_date
+            release_record.is_yanked = release.is_yanked
+            release_record.download_url = release.download_url
+            release_record.sha256 = release.sha256
+
         # Update or create Repository
         if repo_data:
             r_obj = session.query(Repository).filter_by(package_id=pkg.id).first()
@@ -252,7 +327,18 @@ async def run_package_analysis(
             stars_count=repo_data.stars if repo_data else None,
             forks_count=repo_data.forks if repo_data else None,
             issues_count=repo_data.open_issues if repo_data else None,
-            raw_data=json.dumps({"daily": dl_analytics.daily_downloads, "weekly": dl_analytics.weekly_downloads}),
+            raw_data=json.dumps(
+                {
+                    "daily": dl_analytics.daily_downloads,
+                    "weekly": dl_analytics.weekly_downloads,
+                    "adoption_status": adoption_search_status,
+                    "adoption_caveats": adoption_search_caveats,
+                    "security_status": sec_report.status,
+                    "security_checked_at": sec_report.checked_at.isoformat(),
+                    "security_caveats": sec_report.caveats,
+                    "mirror_inclusive": dl_analytics.mirror_inclusive,
+                }
+            ),
         )
         session.add(snapshot)
 
@@ -271,23 +357,24 @@ async def run_package_analysis(
                 )
             )
 
-        session.query(SecurityFinding).filter_by(package_id=pkg.id).delete()
-        for s_item in sec_report.vulnerabilities:
-            session.add(
-                SecurityFinding(
-                    package_id=pkg.id,
-                    identifier=s_item.identifier,
-                    severity=s_item.severity,
-                    affected_range=s_item.affected_versions,
-                    fixed_in=s_item.fixed_version,
-                    source=s_item.source,
-                    reference_url=s_item.reference_url,
-                    title=s_item.title,
-                    details=s_item.details,
-                    remediation=s_item.remediation,
-                    detected_at=now,
+        if sec_report.status in ("checked", "partial"):
+            session.query(SecurityFinding).filter_by(package_id=pkg.id).delete()
+            for s_item in sec_report.vulnerabilities:
+                session.add(
+                    SecurityFinding(
+                        package_id=pkg.id,
+                        identifier=s_item.identifier,
+                        severity=s_item.severity,
+                        affected_range=s_item.affected_versions,
+                        fixed_in=s_item.fixed_version,
+                        source=s_item.source,
+                        reference_url=s_item.reference_url,
+                        title=s_item.title,
+                        details=s_item.details,
+                        remediation=s_item.remediation,
+                        detected_at=now,
+                    )
                 )
-            )
 
         # Store adoption evidence
         for adopt in adopt_result.findings:
@@ -359,4 +446,3 @@ async def run_package_analysis(
     # Re-query package to return
     with db_session() as session:
         return session.query(Package).filter_by(id=package_id).first()
-
