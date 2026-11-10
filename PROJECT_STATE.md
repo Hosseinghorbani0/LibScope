@@ -61,3 +61,4 @@ LibScope analyzes software packages and repositories and produces evidence-based
 ## Detailed remediation notes
 
 See [the engineering remediation report](docs/reviews/ENGINEERING_REMEDIATION_REPORT.md).
+
