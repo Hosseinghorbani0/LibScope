@@ -417,3 +417,4 @@
   "compare.note.highDownloads": "High download volume with relatively few repository stars may reflect automated or transitive installs.",
   "compare.note.highStars": "High repository stars with modest registry downloads may reflect interest rather than runtime installation."
 }
+
