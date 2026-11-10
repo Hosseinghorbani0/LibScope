@@ -26,7 +26,6 @@ Before contributing code, please keep our fundamental design constraints in mind
 
 ### Prerequisites
 - Python 3.11 or higher
-- Node.js 20+ and npm 10+ (for the Web Dashboard)
 - Git
 
 ### Initializing the Workspace
@@ -43,11 +42,9 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 # Install development dependencies in editable mode
 pip install -e ".[dev]"
 
-# Install Dashboard dependencies
-cd apps/dashboard
-npm install
-npm run build
-cd ../..
+# Optional: install all AI provider SDKs for live-provider development
+pip install -e ".[ai]"
+
 ```
 
 ---
@@ -63,9 +60,18 @@ pytest tests/unit -v
 # Run integration tests
 pytest tests/integration -v
 
-# Run full test suite with coverage
+# Run full test suite
 pytest tests/ -v
+
+# Check modified Python files or the full repository
+ruff check .
+
+# Check framework-free dashboard JavaScript syntax (optional)
+node --check apps/api/libscope/api/dashboard_static/api.js
+node --check apps/api/libscope/api/dashboard_static/app.js
 ```
+
+The dashboard is plain HTML, CSS, and JavaScript served by FastAPI. No Node.js, npm, or frontend build step is required to develop or deploy it.
 
 ---
 
@@ -108,4 +114,3 @@ To add a new structured AI assessment:
 3. Verify formatting and linting pass (`ruff check .`).
 4. Commit your changes with concise, descriptive commit messages.
 5. Push to your branch and open a Pull Request using the PR template.
-
