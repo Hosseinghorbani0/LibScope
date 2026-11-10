@@ -96,3 +96,4 @@ def test_failed_security_lookup_is_not_scored_as_clean():
 
     assert res.dimensions["security"].score is None
     assert "inferred" in res.dimensions["security"].explanation
+
