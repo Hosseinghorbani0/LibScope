@@ -83,3 +83,4 @@ def test_outbound_http_client_validates_each_request(monkeypatch):
         await client.aclose()
 
     asyncio.run(exercise())
+
