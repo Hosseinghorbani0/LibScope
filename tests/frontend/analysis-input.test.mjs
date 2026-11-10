@@ -52,3 +52,4 @@ test("rejects unsupported hosts and malformed URLs", () => {
 test("requires a repository identifier for the GitHub ecosystem", () => {
   assert.equal(parseAnalysisInput("requests", "github").reason, "analysis.validation.repositoryRequired");
 });
+
