@@ -300,3 +300,4 @@ class HealthAnalyzer:
             strengths=strengths,
             risks=risks,
         )
+
