@@ -137,3 +137,4 @@ class CompetitorAnalyzer:
             summary_matrix=matrix,
             comparative_summary=summary,
         )
+
