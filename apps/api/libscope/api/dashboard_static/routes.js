@@ -43,3 +43,4 @@ export function watchRoute(listener) {
   window.addEventListener("popstate", handleRouteChange);
   window.addEventListener("hashchange", handleRouteChange);
 }
+
