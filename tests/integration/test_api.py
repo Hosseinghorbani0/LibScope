@@ -188,3 +188,4 @@ def test_adoption_status_endpoint_does_not_infer_a_clean_search():
 
     assert response.status_code == 200
     assert response.json()["status"] == "not_checked"
+
