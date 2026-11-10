@@ -78,3 +78,4 @@ export function parseAnalysisInput(value, selectedEcosystem = "pypi") {
   if (parsedUrl) return parsedUrl;
   return validateIdentifier(input, selectedEcosystem === "github" ? "github" : "pypi", "identifier");
 }
+
