@@ -386,3 +386,4 @@ class ScoringEngine:
             explanation=explanation,
             breakdown_json=json.dumps({k: asdict(v) for k, v in dimensions.items()}),
         )
+
