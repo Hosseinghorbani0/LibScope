@@ -96,3 +96,4 @@ Gzip sizes are summed after compressing each static file separately. The native 
 - Base/HEAD: `b8e1771025325e8ceb50d386e5b2e9ae0804ea11`
 - Tag `v0.1.0` and branch `backup/pre-rebuild` were left unchanged.
 - No commit or push was created.
+
