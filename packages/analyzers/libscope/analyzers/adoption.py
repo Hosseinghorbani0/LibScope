@@ -2,12 +2,18 @@
 Adoption Discovery and Evidence Classification.
 Discovers and classifies verified real-world adoption of a package across independent repositories.
 """
+import configparser
+import json
 import re
+import tomllib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import PurePosixPath
 from typing import Any
 
 from libscope.core.logging import get_logger
+from packaging.requirements import InvalidRequirement, Requirement
+from packaging.utils import canonicalize_name
 
 logger = get_logger("analyzer.adoption")
 
@@ -23,15 +29,127 @@ DEPENDENCY_MANIFESTS = {
     "requirements.txt",
     "requirements.in",
     "pyproject.toml",
-    "setup.py",
     "setup.cfg",
-    "Pipfile",
+    "pipfile",
     "package.json",
-    "Cargo.toml",
-    "go.mod",
-    "pom.xml",
-    "build.gradle",
 }
+UNSUPPORTED_MANIFESTS = {"setup.py", "cargo.toml", "go.mod", "pom.xml", "build.gradle", "build.gradle.kts"}
+MAX_MANIFEST_SIZE = 1_000_000
+
+
+def _requirement_matches(specifier: str, package_name: str) -> bool:
+    line = specifier.strip()
+    if not line or line.startswith(("#", "-")):
+        return False
+    try:
+        return canonicalize_name(Requirement(line).name) == canonicalize_name(package_name)
+    except InvalidRequirement:
+        return False
+
+
+def _is_declared_in_manifest(file_path: str, content: str, package_name: str) -> bool | None:
+    """Return None when the manifest format is malformed."""
+    manifest = PurePosixPath(file_path).name.lower()
+
+    if manifest.startswith("requirements") and manifest.endswith((".txt", ".in")):
+        return any(_requirement_matches(line.split(" #", 1)[0], package_name) for line in content.splitlines())
+
+    if manifest == "pyproject.toml":
+        try:
+            data = tomllib.loads(content)
+        except tomllib.TOMLDecodeError:
+            return None
+
+        candidates: list[str] = []
+        project = data.get("project", {})
+        if isinstance(project, dict):
+            candidates.extend(item for item in project.get("dependencies", []) if isinstance(item, str))
+            optional = project.get("optional-dependencies", {})
+            if isinstance(optional, dict):
+                candidates.extend(
+                    item
+                    for values in optional.values()
+                    if isinstance(values, list)
+                    for item in values
+                    if isinstance(item, str)
+                )
+        build_system = data.get("build-system", {})
+        if isinstance(build_system, dict):
+            candidates.extend(item for item in build_system.get("requires", []) if isinstance(item, str))
+
+        tool = data.get("tool", {})
+        if isinstance(tool, dict):
+            poetry = tool.get("poetry", {})
+            if isinstance(poetry, dict):
+                dependencies = poetry.get("dependencies", {})
+                if isinstance(dependencies, dict):
+                    candidates.extend(dependencies)
+                groups = poetry.get("group", {})
+                if isinstance(groups, dict):
+                    for group in groups.values():
+                        if isinstance(group, dict) and isinstance(group.get("dependencies"), dict):
+                            candidates.extend(group["dependencies"])
+            pdm = tool.get("pdm", {})
+            if isinstance(pdm, dict):
+                for section in ("dependencies", "dev-dependencies"):
+                    values = pdm.get(section, {})
+                    if isinstance(values, dict):
+                        candidates.extend(values)
+
+        dependency_groups = data.get("dependency-groups", {})
+        if isinstance(dependency_groups, dict):
+            candidates.extend(
+                item
+                for values in dependency_groups.values()
+                if isinstance(values, list)
+                for item in values
+                if isinstance(item, str)
+            )
+        return any(_requirement_matches(item, package_name) for item in candidates)
+
+    if manifest == "setup.cfg":
+        parser = configparser.ConfigParser()
+        try:
+            parser.read_string(content)
+        except configparser.Error:
+            return None
+        candidates = []
+        if parser.has_option("options", "install_requires"):
+            candidates.extend(parser.get("options", "install_requires").splitlines())
+        if parser.has_section("options.extras_require"):
+            for value in parser["options.extras_require"].values():
+                candidates.extend(value.splitlines())
+        return any(_requirement_matches(item, package_name) for item in candidates)
+
+    if manifest == "pipfile":
+        try:
+            data = tomllib.loads(content)
+        except tomllib.TOMLDecodeError:
+            return None
+        candidates = [
+            name
+            for section in ("packages", "dev-packages")
+            for name in data.get(section, {})
+            if isinstance(data.get(section), dict)
+        ]
+        return any(canonicalize_name(item) == canonicalize_name(package_name) for item in candidates)
+
+    if manifest == "package.json":
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(data, dict):
+            return None
+        candidates = [
+            name
+            for section in ("dependencies", "devDependencies", "optionalDependencies", "peerDependencies")
+            for name in data.get(section, {})
+            if isinstance(data.get(section), dict)
+        ]
+        return package_name.strip().lower() in candidates
+
+    return None
 
 
 @dataclass
@@ -79,30 +197,29 @@ class AdoptionAnalyzer:
         5. Unverified (unrecognized files or ambiguous strings)
         """
         lower_path = file_path.lower()
-        base_name = lower_path.split("/")[-1]
+        base_name = PurePosixPath(lower_path).name
         pkg_lower = package_name.lower()
         content_lower = matched_content.lower()
+        is_requirements = base_name.startswith("requirements") and base_name.endswith((".txt", ".in"))
 
         # 4. Check for documentation / mention only first
-        if any(lower_path.endswith(ext) for ext in [".md", ".rst", ".txt"]) and base_name not in ["requirements.txt", "requirements.in"]:
+        if any(lower_path.endswith(ext) for ext in [".md", ".rst", ".txt"]) and not is_requirements:
             return CLASS_MENTION_ONLY, 0.3
 
         if "doc" in lower_path or "example" in lower_path:
             return CLASS_MENTION_ONLY, 0.35
 
+        if base_name in UNSUPPORTED_MANIFESTS:
+            return CLASS_UNVERIFIED, 0.0
+
         # 1. Dependency manifest check
-        if base_name in DEPENDENCY_MANIFESTS:
-            # Check if package name is declared as a package requirement
-            dep_patterns = [
-                rf'"{re.escape(pkg_lower)}[\^~>=<]*.*"',
-                rf"'{re.escape(pkg_lower)}[\^~>=<]*.*'",
-                rf"^{re.escape(pkg_lower)}\b",
-                rf"\b{re.escape(pkg_lower)}\b\s*[>=<~^]",
-            ]
-            for pat in dep_patterns:
-                if re.search(pat, content_lower, re.MULTILINE):
-                    return CLASS_CONFIRMED_DEPENDENCY, 0.95
-            return CLASS_CONFIRMED_DEPENDENCY, 0.85
+        if base_name in DEPENDENCY_MANIFESTS or is_requirements:
+            if len(matched_content.encode("utf-8")) > MAX_MANIFEST_SIZE:
+                return CLASS_UNVERIFIED, 0.0
+            declared = _is_declared_in_manifest(file_path, matched_content, package_name)
+            if declared:
+                return CLASS_CONFIRMED_DEPENDENCY, 0.99
+            return CLASS_UNVERIFIED, 0.0
 
         # 2. Source code usage (Python, JS, TS, etc.)
         if lower_path.endswith((".py", ".pyw")):
@@ -157,7 +274,13 @@ class AdoptionAnalyzer:
             seen_repos.add(dedup_key)
 
             file_path = item.get("file_path", "")
-            raw_match = item.get("raw_match", "") or file_path
+            raw_match = item.get("raw_match", "") or ""
+            fetch_status = item.get("fetch_status", "available" if raw_match else "unavailable")
+            if fetch_status != "available" or not raw_match:
+                limitations.append(
+                    f"Manifest content for {repo_full_name}/{file_path} could not be verified ({fetch_status})."
+                )
+                continue
             stars = int(item.get("stars", 0))
 
             evidence_type, confidence = self.classify_evidence(file_path, raw_match, package_name)
@@ -203,4 +326,3 @@ class AdoptionAnalyzer:
             findings=findings,
             limitations=limitations,
         )
-
