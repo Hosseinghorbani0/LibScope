@@ -165,3 +165,4 @@ def test_output_validator_with_dict():
     validated = AIOutputValidator.validate_model(raw_dict, PackageAnalysisOutput)
     assert validated.summary == "Synthesized summary."
     assert validated.maintainer_recommendations == "Add tests."
+
