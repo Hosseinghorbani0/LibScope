@@ -373,3 +373,4 @@ class GitHubProvider(BaseProvider):
             return content_bytes.decode("utf-8"), "available"
         except (binascii.Error, UnicodeDecodeError):
             return None, "invalid_content"
+
