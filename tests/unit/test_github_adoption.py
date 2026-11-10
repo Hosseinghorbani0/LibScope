@@ -108,3 +108,4 @@ def test_unavailable_manifest_content_does_not_create_adoption():
     assert result.total_findings == 0
     assert result.confirmed_dependencies_count == 0
     assert result.limitations
+
