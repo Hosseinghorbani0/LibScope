@@ -650,3 +650,4 @@ code, input[name="packageName"], #api-key-input { unicode-bidi: isolate; }
   .table-wrap { max-width: calc(100vw - 1.4rem); }
   .comparison-result { min-width: 0; }
 }
+
