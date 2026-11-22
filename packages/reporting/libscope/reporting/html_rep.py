@@ -270,6 +270,15 @@ def generate_html_report(data: dict[str, Any]) -> str:
           <span class="stat-label">30d Moving Average:</span>
           <span class="stat-val">{_escape(dl.get('moving_average_30d'))}</span>
         </div>
+        <div class="stat-row">
+          <span class="stat-label">Data quality / source:</span>
+          <span class="stat-val">{_escape(dl.get('data_status', 'unknown'))} / {_escape(dl.get('data_source') or 'Unknown')}</span>
+        </div>
+        <p>Downloads are not unique users. Mirror-inclusive: {_escape(dl.get('mirror_inclusive', 'unknown'))}; estimated: {_escape(dl.get('is_estimated', False))}.</p>
+        <p>Historical observations: {_escape(dl.get('observed_days', 0))}; latest date: {_escape(dl.get('latest_observation_date') or 'Unknown')}.</p>
+        <p>Available periods: {_escape(', '.join(dl.get('available_periods', [])) or 'Unknown')}.</p>
+        {f'<p>Source: {_escape(dl.get("source_url"))}</p>' if dl.get("source_url") else ""}
+        {''.join(f'<p>{_escape(item)}</p>' for item in dl.get("caveats", []) or [])}
       </div>
     </div>
 """
