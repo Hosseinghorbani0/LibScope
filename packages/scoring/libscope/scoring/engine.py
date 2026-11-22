@@ -61,35 +61,47 @@ class ScoringEngine:
         "growth": 0.07,
     }
 
-    def _calc_popularity(self, monthly_downloads: int, stars: int) -> DimensionScore:
+    def _calc_popularity(self, monthly_downloads: int | None, stars: int) -> DimensionScore:
         inputs = {"monthly_downloads": monthly_downloads, "stars": stars}
-        if monthly_downloads == 0 and stars == 0:
+        if monthly_downloads in (None, 0) and stars == 0:
             return DimensionScore(
                 name="popularity",
                 score=None,
                 weight=self.WEIGHTS["popularity"],
                 confidence="none",
-                explanation="No download or star metrics recorded.",
+                explanation=(
+                    "Download metrics are unavailable; no GitHub stars were recorded."
+                    if monthly_downloads is None
+                    else "No download or star metrics recorded."
+                ),
                 inputs=inputs,
             )
 
         # Logarithmic scaling: 1k dl -> 30, 100k dl -> 70, 1M+ dl -> 90+
         dl_score = 0.0
-        if monthly_downloads > 0:
+        if monthly_downloads is not None and monthly_downloads > 0:
             dl_score = min(100.0, math.log10(monthly_downloads) * 15.0)
 
         star_score = 0.0
         if stars > 0:
             star_score = min(100.0, math.log10(stars) * 25.0)
 
-        combined = round(0.6 * dl_score + 0.4 * star_score, 1)
-        conf = "high" if monthly_downloads > 0 and stars > 0 else "medium"
+        if monthly_downloads is None:
+            combined = round(star_score, 1)
+            conf = "low"
+            explanation = (
+                f"Download metrics are unavailable; popularity is based only on {stars:,} GitHub stars."
+            )
+        else:
+            combined = round(0.6 * dl_score + 0.4 * star_score, 1)
+            conf = "high" if monthly_downloads > 0 and stars > 0 else "medium"
+            explanation = f"Scaled from {monthly_downloads:,} monthly downloads and {stars:,} GitHub stars."
         return DimensionScore(
             name="popularity",
             score=min(100.0, combined),
             weight=self.WEIGHTS["popularity"],
             confidence=conf,
-            explanation=f"Scaled from {monthly_downloads:,} monthly downloads and {stars:,} GitHub stars.",
+            explanation=explanation,
             inputs=inputs,
         )
 
@@ -292,7 +304,7 @@ class ScoringEngine:
     def calculate_score(
         self,
         package_name: str,
-        monthly_downloads: int = 0,
+        monthly_downloads: int | None = 0,
         stars: int = 0,
         growth_rate_pct: float | None = None,
         recent_trend: str = "stable",
@@ -343,7 +355,11 @@ class ScoringEngine:
         total_weight = sum(d.weight for d in valid_dims)
 
         # Rule: If critical signals are missing, return "Insufficient data"
-        if len(valid_dims) < 4 or total_weight < 0.50 or (monthly_downloads == 0 and stars == 0 and confirmed_adoptions == 0):
+        if (
+            len(valid_dims) < 4
+            or total_weight < 0.50
+            or (monthly_downloads in (None, 0) and stars == 0 and confirmed_adoptions == 0)
+        ):
             return ScoreResult(
                 package_name=package_name,
                 version=SCORING_MODEL_VERSION,
