@@ -2,15 +2,18 @@
 Unit tests for LibScope AI analysis services and deterministic fallbacks.
 """
 import asyncio
+from unittest.mock import AsyncMock
+
 from libscope.ai.client import AskAIClient
 from libscope.ai.config import AIConfig
+from libscope.ai.models import PackageAnalysisOutput
 from libscope.ai.services import (
-    PackageAnalysisService,
     AdoptionAnalysisService,
-    HealthAnalysisService,
-    SecurityAnalysisService,
     CompetitorAnalysisService,
+    HealthAnalysisService,
     MaintainerRecommendationsService,
+    PackageAnalysisService,
+    SecurityAnalysisService,
 )
 
 
@@ -51,6 +54,48 @@ def test_package_analysis_service_deterministic_fallback():
         assert "88.5" in res.competitive_position
 
     asyncio.run(_run())
+
+
+def test_package_analysis_marks_unavailable_download_data_as_unknown():
+    client = AskAIClient(config=AIConfig(api_key="test-key"))
+    client.ask_async = AsyncMock(
+        return_value=PackageAnalysisOutput(
+            summary="Evidence-based summary.",
+            risks="Unknown download metrics.",
+            opportunities="Continue monitoring.",
+            maintainer_recommendations="Publish trustworthy telemetry.",
+            competitive_position="Insufficient download evidence.",
+        )
+    )
+    service = PackageAnalysisService(client=client)
+
+    async def _run():
+        await service.analyze(
+            name="example",
+            ecosystem="pypi",
+            latest_version=None,
+            license_str=None,
+            repo_url=None,
+            monthly_downloads=None,
+            mirror_inclusive=False,
+            growth_trend="insufficient_data",
+            stars=0,
+            forks=0,
+            open_issues=0,
+            days_since_commit=None,
+            days_since_release=None,
+            verified_adoptions=0,
+            vulnerabilities_count=0,
+            critical_high_count=0,
+            overall_score=None,
+            confidence_level="low",
+            raw_description=None,
+            download_data_status="unavailable",
+        )
+
+    asyncio.run(_run())
+    prompt = client.ask_async.call_args.kwargs["prompt"]
+    assert "- Monthly Downloads: Unavailable (not verified)" in prompt
 
 
 def test_adoption_analysis_service_fallback_tiers():
