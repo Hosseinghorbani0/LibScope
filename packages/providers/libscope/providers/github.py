@@ -260,6 +260,7 @@ class GitHubProvider(BaseProvider):
             historical={},
             mirror_inclusive=False,
             is_estimated=False,
+            data_status="unavailable",
             provenance=DataProvenance(
                 source_name="github_api",
                 notes="Registry download metrics not supported by GitHub provider",
