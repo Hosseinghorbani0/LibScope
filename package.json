@@ -1,0 +1,63 @@
+{
+  "name": "libscope-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cross-platform LibScope desktop application",
+  "main": "desktop/main.cjs",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "desktop:start": "electron .",
+    "desktop:backend": "python -m PyInstaller --noconfirm --clean --distpath desktop-build/backend --workpath desktop-build/work desktop/backend.spec",
+    "desktop:build": "npm run desktop:backend && electron-builder",
+    "test:frontend": "node --test tests/frontend/*.test.mjs"
+  },
+  "devDependencies": {
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "dev.libscope.desktop",
+    "productName": "LibScope",
+    "asar": true,
+    "files": [
+      "desktop/main.cjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "desktop-build/backend",
+        "to": "backend",
+        "filter": [
+          "libscope-backend",
+          "libscope-backend.exe"
+        ]
+      }
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.developer-tools"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ],
+      "category": "Development"
+    }
+  }
+}
