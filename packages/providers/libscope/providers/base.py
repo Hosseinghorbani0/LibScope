@@ -60,6 +60,10 @@ class NormalizedDownloads:
     historical: dict[str, int] = field(default_factory=dict)  # YYYY-MM-DD -> count
     mirror_inclusive: bool = True
     is_estimated: bool = False
+    data_status: str = "unknown"  # complete, partial, unavailable, or unknown
+    available_periods: list[str] = field(default_factory=list)
+    observed_days: int = 0
+    latest_observation_date: str | None = None
     provenance: DataProvenance | None = None
 
 
