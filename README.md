@@ -12,7 +12,7 @@
 
 *A production-grade, extensible open-source software intelligence platform that analyzes software packages and repositories, discovers real-world adoption evidence, measures ecosystem health, tracks trends, and produces objective, evidence-based intelligence reports.*
 
-[Features](#features) • [Architecture](#architecture) • [Quickstart](#quickstart) • [CLI Usage](#cli-usage) • [REST API & Dashboard](#web-dashboard--rest-api) • [AI Engine Integration](#ai-engine-integration-askai-python) • [Docker](#docker-deployment) • [Contributing](#contributing)
+[Features](#features) • [Architecture](#architecture) • [Quickstart](#quickstart) • [CLI Usage](#cli-usage) • [Desktop App](#desktop-application) • [Developer API](#developer-api) • [AI Engine Integration](#ai-engine-integration-askai-python) • [Docker](#docker-deployment) • [Contributing](#contributing)
 
 </div>
 
@@ -39,7 +39,7 @@ Software engineering teams and open-source consumers frequently select packages 
   Computes fully explainable scores across **Popularity**, **Growth**, **Adoption**, **Maintenance**, **Documentation**, **Quality**, and **Security**. Explicitly indicates `"Insufficient data"` and confidence levels rather than guessing.
 
 - **Download Anomaly & Trend Detection**:
-  Calculates 7-day and 30-day moving averages and uses Z-score statistical anomaly detection to distinguish natural growth from bot-driven download spikes. Distinguishes mirror-inclusive vs mirror-exclusive statistics.
+  Calculates 7-day and 30-day moving averages and uses Z-score statistical anomaly detection to distinguish natural growth from bot-driven download spikes. PyPI download totals are mirror-excluded; the dashboard and reports show source completeness, observed history, estimated totals, and data caveats. Download counts are requests, not unique users.
 
 - **Engineering Hygiene & OSV Auditing**:
   Inspects commit cadence, release frequency, OSI licenses, documentation completeness (`README`, `CONTRIBUTING`, `SECURITY.md`), and audits open CVEs/GHSAs using the Google Open Source Vulnerabilities (OSV) database.
@@ -49,8 +49,8 @@ Software engineering teams and open-source consumers frequently select packages 
 
 - **Multi-Interface Delivery**:
   - **Terminal CLI**: Rich interactive console with side-by-side package comparisons, table visualizations, and offline benchmarking.
-  - **REST API**: Production FastAPI backend with background job orchestration and OpenAPI / Swagger documentation.
-  - **Web Dashboard**: Framework-free HTML, CSS, and modern JavaScript served directly by FastAPI; no frontend build or Node.js runtime is required.
+  - **Desktop application**: Electron shell with a bundled Python service for Windows, macOS, and Linux; it opens as a standalone application, not a hosted website.
+  - **Seven interface languages**: English, Persian, Arabic, Spanish, French, German, and Simplified Chinese. Persian and Arabic use right-to-left layouts.
   - **Executive Reports**: Multi-format generation in Markdown, JSON, and self-contained interactive HTML.
 
 ---
@@ -187,26 +187,38 @@ libscope history fastapi
 
 ---
 
-## Web Dashboard & REST API
+## Desktop Application
 
-### Launching the Web Server
+The desktop application bundles the LibScope interface and its Python API service. It listens only on the local loopback interface and stores its database under the operating system's application-data directory. Users do not need to install Python, Node.js, or a browser.
 
 ```bash
-# Install LibScope and launch the FastAPI application.
-# Dashboard assets are included with the API package; no Node.js or frontend build is needed.
-pip install -e .
-# Local-only development mode (production requires an API key)
-export LIBSCOPE_ENVIRONMENT=development
-uvicorn libscope.api.main:app --host 0.0.0.0 --port 8000 --reload
+# From a source checkout, install the Python backend, all AI provider SDKs,
+# and JavaScript dependencies.
+python -m pip install ".[ai]"
+npm ci
+
+# Run the desktop app in development.
+npm run desktop:start
+
+# Build an installer for the current operating system.
+python -m pip install pyinstaller
+npm run desktop:build
 ```
 
-- **Interactive Dashboard**: Navigate to [http://localhost:8000](http://localhost:8000)
-- **API Documentation (Swagger UI)**: Navigate to [http://localhost:8000/docs](http://localhost:8000/docs)
-- **Health Check**: `curl http://localhost:8000/health`
+Installers are written to `release/`: Windows NSIS, macOS DMG, and Linux AppImage, DEB, and RPM. Build each installer on its target operating system. The **Desktop installers** GitHub Actions workflow builds all three OS targets and uploads downloadable artifacts. macOS packages are unsigned unless Apple Developer signing and notarization credentials are configured; macOS may require an explicit first-open approval.
 
-The dashboard uses same-origin relative API URLs and native browser `fetch`. Its static HTML, CSS, and JavaScript are served from `/` and `/dashboard-assets/` and are included in the Python distribution. Browsers do not need Node.js or any frontend installation.
+Package and repository analysis requires network access to the configured data providers. The app itself and its local database run on the user's computer; LibScope does not require hosting the interface as a website.
 
-The dashboard interface is available in English, Persian, and Arabic. Persian and Arabic switch the page to right-to-left layout; the language preference is stored in this browser, while API keys remain memory-only.
+## Developer API
+
+The same FastAPI service is available for local development and integrations. Its dashboard assets remain packaged with the Python distribution.
+
+```bash
+python -m pip install -e .
+python -m uvicorn libscope.api.main:app --host 127.0.0.1 --port 8000
+```
+
+In development mode, the API can be opened at [http://127.0.0.1:8000](http://127.0.0.1:8000); Swagger UI is at `/docs` and the health check is `/health`. The desktop application uses a private loopback port and does not expose a public server.
 
 ### Key REST Endpoints
 
@@ -242,6 +254,8 @@ LibScope integrates [`askai-python`](https://pypi.org/project/askai-python/) as 
 ### Configuring AI Credentials
 
 The base installation includes the `askai-python` integration but not its optional provider SDKs. Install `.[ai]` to enable all supported providers. Azure OpenAI additionally requires its endpoint, API version, and deployment settings. Custom base URLs are supported only for OpenRouter and OpenAI-compatible providers and remain subject to the outbound URL policy.
+
+The direct first-party clients include OpenAI, Anthropic, Google Gemini, and Azure OpenAI. OpenRouter and Groq are also supported. Choose a provider with `LIBSCOPE_AI_PROVIDER`, set its provider-specific API key, and select a provider-supported model with `LIBSCOPE_AI_MODEL`; the dashboard Settings page shows the active provider, model, and supported clients. Provider API keys are read only by the backend and are never returned by the API.
 
 Set your desired provider credentials in your environment or `.env` file:
 
