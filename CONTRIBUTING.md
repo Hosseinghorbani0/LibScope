@@ -66,12 +66,17 @@ pytest tests/ -v
 # Check modified Python files or the full repository
 ruff check .
 
-# Check framework-free dashboard JavaScript syntax (optional)
+# Check desktop and dashboard JavaScript syntax
 node --check apps/api/libscope/api/dashboard_static/api.js
 node --check apps/api/libscope/api/dashboard_static/app.js
+node --check desktop/main.cjs
+
+# Run focused renderer tests and start the desktop shell in development
+npm run test:frontend
+npm run desktop:start
 ```
 
-The dashboard is plain HTML, CSS, and JavaScript served by FastAPI. No Node.js, npm, or frontend build step is required to develop or deploy it.
+The renderer remains plain HTML, CSS, and JavaScript served by FastAPI; no renderer build step is used. The end-user product is an Electron desktop application. Building installers additionally requires Node.js/npm, PyInstaller, and the optional AI provider SDKs (`pip install -e ".[ai]"`); `npm run desktop:build` creates an installer for the current operating system.
 
 ---
 
