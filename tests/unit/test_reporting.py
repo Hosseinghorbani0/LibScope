@@ -96,3 +96,25 @@ def test_markdown_report_does_not_present_unchecked_security_as_clean():
     assert "No clean result is available" in report
     assert "**Overall Rating:** `INSUFFICIENT_DATA`" in report
 
+
+def test_download_data_quality_and_source_are_included_in_markdown_report():
+    report = generate_markdown_report(
+        {
+            "downloads": {
+                "monthly": 300,
+                "data_status": "partial",
+                "data_source": "pypistats",
+                "is_estimated": True,
+                "observed_days": 28,
+                "latest_observation_date": "2026-11-20",
+                "source_url": "https://pypistats.org/api/packages/example/recent",
+                "caveats": ["Some source endpoints were unavailable."],
+            },
+        }
+    )
+
+    assert "**Data Status / Source:** `partial` / `pypistats`" in report
+    assert "**Estimated Totals:** `True`" in report
+    assert "**Source:** https://pypistats.org/api/packages/example/recent" in report
+    assert "Some source endpoints were unavailable." in report
+
