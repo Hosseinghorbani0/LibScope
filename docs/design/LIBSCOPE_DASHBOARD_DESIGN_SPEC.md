@@ -2,13 +2,13 @@
 
 ## Status
 
-Approved implementation baseline for the dashboard redesign. The specification preserves the existing uncommitted work and defines data-trust constraints before any product changes. It does not authorize a database schema migration; if one becomes necessary, its compatibility plan must be reviewed separately.
+Approved implementation baseline for the desktop-interface redesign. The specification preserves the existing uncommitted work and defines data-trust constraints before product changes. It does not authorize a database schema migration; if one becomes necessary, its compatibility plan must be reviewed separately.
 
 ## Product intent
 
-LibScope is an open-source software intelligence platform: **Beyond Downloads.** The dashboard should help developers assess adoption, security, maintenance, package health, and evidence quality without overstating what the collected data proves.
+LibScope is an open-source software intelligence platform: **Beyond Downloads.** Its installable desktop application should help developers assess adoption, security, maintenance, package health, and evidence quality without overstating what the collected data proves.
 
-The interface will remain a framework-free, same-origin application served by FastAPI. It will use semantic HTML, modular JavaScript, CSS, browser APIs, native Fetch, and lightweight SVG. End users will not need Node.js or a frontend installation.
+The end-user product is a standalone Electron application for Windows, macOS, and Linux. It bundles the existing semantic HTML, modular JavaScript, CSS, and SVG interface with a Python/FastAPI sidecar bound only to loopback. Installers bundle all runtimes; end users do not need to install Python, Node.js, a browser, or host a website.
 
 ### Product principles
 
@@ -29,7 +29,7 @@ The interface will remain a framework-free, same-origin application served by Fa
 - Primary destinations: Overview, Package catalog, Analyze, Adoption, Compare.
 - Persistent language and theme controls in the application header.
 - Breadcrumbs and package context on detail screens.
-- Responsive navigation that remains keyboard accessible at mobile widths.
+- Desktop-window navigation that remains keyboard accessible at supported desktop sizes.
 - Service/database freshness and collection status only when the backend can provide a meaningful timestamp and status.
 
 ### Overview
@@ -113,6 +113,9 @@ Use the same assets in the dashboard and HTML report. Document asset variants an
 
 ## Visual system and interaction
 
+- Use a quiet evergreen-and-linen palette: green signals continuity and healthy activity, warm brass is a sparing highlight for craft and innovation, and muted red/amber remain reserved for meaningful status.
+- Favor editorial serif headings with clear sans-serif data labels, compact spacing, flat surfaces, fine borders, and minimal corner rounding; avoid decorative gradients and high-chroma accents.
+- Keep hierarchy evidence-led: color, typography, and surfaces should clarify status and next actions rather than compete with package data.
 - Establish semantic color tokens for light and dark themes, surfaces, borders, text, focus, and status.
 - Keep severity/status meaning consistent and do not rely on color alone.
 - Use restrained typography, compact but readable information density, consistent spacing, and clear table/chart hierarchy.
@@ -123,19 +126,20 @@ Use the same assets in the dashboard and HTML report. Document asset variants an
 
 ## Internationalization
 
-- Locale dictionaries live in separate structured files (`en`, `fa`, `ar`) with stable keys and English fallback.
+- Locale dictionaries live in separate structured files (`en`, `fa`, `ar`, `es`, `fr`, `de`, `zh`) with stable keys. Every user-facing key must have a reviewed translation; non-English runtime fallback is not accepted.
 - All user-facing content, including navigation, validation, error/loading/empty states, tables, dialogs, tooltips, and reports, goes through the translation layer.
-- Set document `lang` and `dir` for the selected locale: English LTR; Persian and Arabic RTL.
+- Set document `lang` and `dir` for the selected locale: Persian and Arabic RTL; English, Spanish, French, German, and Simplified Chinese LTR.
 - Use `Intl.NumberFormat` and `Intl.DateTimeFormat` with the active locale.
 - Keep package names, code, identifiers, and URLs readable using direction isolation.
-- Verify Persian typography and alignment in actual browser output; translating strings without RTL layout is insufficient.
+- Verify Persian and Arabic typography/alignment in the desktop renderer; translating strings without RTL layout is insufficient.
 
 ## Technical architecture
 
-- FastAPI continues to serve the dashboard and static assets from the Python distribution.
+- Electron owns the desktop window and starts a bundled Python/FastAPI sidecar on a fixed loopback origin so locale and theme preferences persist across launches.
+- The backend stores its SQLite database in the operating system's per-user application-data directory and shuts down with the desktop process.
 - Keep API transport, localization, state, rendering, and event delegation in small native JavaScript modules.
-- Use same-origin API requests and preserve the API key in module memory only.
-- Avoid new frontend runtime dependencies and mandatory build tools.
+- Use same-origin API requests; keep web security enabled, isolate Node from the renderer, and open external links in the system browser.
+- Do not require a separate hosted website or browser to use the product.
 - Any new static files must be included in both wheel and source distribution.
 
 ## Delivery order and acceptance gates
@@ -143,21 +147,20 @@ Use the same assets in the dashboard and HTML report. Document asset variants an
 1. **Specification:** inventory current capabilities, data provenance, constraints, and testable acceptance criteria. Gate: no unsupported metric is planned as available.
 2. **Brand:** SVG variants and integration. Gate: readable at favicon/app-icon size and valid in reports.
 3. **Design system:** responsive tokens, light/dark controls, accessible primitives, logical layout. Gate: keyboard/focus, reduced motion, and viewport checks.
-4. **English redesign:** all existing workflows and richer overview/package views. Gate: every legacy interaction remains reachable and error/empty states are explicit.
-5. **Persian:** complete translation and RTL/bidi pass. Gate: no untranslated visible strings and no direction/layout regressions.
-6. **Arabic:** same architecture, RTL behavior, and translation coverage. Gate: no untranslated visible strings.
-7. **Data improvements:** implement only justified additive API behavior based on existing records; disclose unpersisted history rather than fabricating it. Gate: API tests verify counts, coverage, statuses, and response bounds.
-8. **Quality and documentation:** browser workflows, accessibility, locales, themes, packaging, payload-size comparison, API/report docs, and project-state updates. Gate: all feasible automated checks pass; unavailable infrastructure is explicitly reported.
+4. **Desktop packaging:** bundle the Python API and Electron shell into native installers. Gate: loopback-only service, persistent user data, clear startup errors, and clean process shutdown.
+5. **Seven-language interface:** complete English, Persian, Arabic, Spanish, French, German, and Simplified Chinese translations. Gate: exact key and placeholder parity, no untranslated UI strings, and correct RTL/LTR behavior.
+6. **Data improvements:** implement only justified additive API behavior based on existing records; disclose unpersisted history rather than fabricating it. Gate: API tests verify counts, coverage, statuses, and response bounds.
+7. **Quality and documentation:** desktop workflows, accessibility, locales, themes, platform packaging, API/report docs, and project-state updates. Gate: all feasible automated checks pass; signing or platform infrastructure that is unavailable is explicitly reported.
 
 ## Definition of done
 
 - Existing dashboard capabilities are preserved.
-- The product has a coherent LibScope identity and light/dark themes.
-- English, Persian RTL, and Arabic RTL work across all visible dashboard states.
+- The desktop product has a coherent LibScope identity and light/dark themes.
+- English, Persian RTL, Arabic RTL, Spanish, French, German, and Simplified Chinese work across all visible application states.
 - Overview and intelligence screens expose trustworthy, explainable information with provenance and clear data gaps.
 - Charts use real data and have accessible textual equivalents.
-- No React, Vite, TypeScript, charting framework, or frontend runtime dependency is introduced.
-- FastAPI-served assets are present in wheel and sdist; no frontend install is required for end users.
-- Critical workflows, error states, keyboard access, responsive layouts, and package distributions are tested.
+- No React, Vite, TypeScript, or charting framework is introduced; Electron is bundled with the desktop installers.
+- Windows, macOS, and Linux installers bundle the Python service and frontend assets; no runtime installation is required for end users.
+- Critical workflows, error states, keyboard access, desktop-window layouts, localization completeness, and package distributions are tested.
 - No commit, push, release, or Git-history rewrite occurs without explicit authorization.
 
