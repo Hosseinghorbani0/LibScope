@@ -1,5 +1,5 @@
 import { api } from "./api.js";
-import { getLocale, initializeI18n, setLocale, t } from "./i18n.js";
+import { getLocale, initializeI18n, setLocale, supportedLocales, t } from "./i18n.js";
 import { parseAnalysisInput } from "./analysis-input.js";
 import { readRoute, watchRoute, writeRoute } from "./routes.js";
 import {
@@ -33,6 +33,15 @@ const detailTabs = [
   ["ai", "tabs.ai"],
   ["report", "tabs.reports"],
 ];
+const languageLabelKeys = {
+  en: "language.english",
+  fa: "language.persian",
+  ar: "language.arabic",
+  es: "language.spanish",
+  fr: "language.french",
+  de: "language.german",
+  zh: "language.chineseSimplified",
+};
 
 function getInitialTheme() {
   try {
@@ -111,7 +120,7 @@ function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
   document.documentElement.style.colorScheme = theme;
   const themeColor = document.querySelector('meta[name="theme-color"]');
-  if (themeColor) themeColor.content = theme === "dark" ? "#090d16" : "#f4f7f8";
+  if (themeColor) themeColor.content = theme === "dark" ? "#111812" : "#f4f2e9";
   try {
     localStorage.setItem(THEME_STORAGE_KEY, theme);
   } catch (error) {
@@ -138,6 +147,8 @@ function renderShell() {
   const toolbarLabel = state.view === "package-detail"
     ? state.detail?.package?.name || t("common.packageIntelligence")
     : t(navItems.find(([id]) => id === state.view)?.[1] || "common.softwareIntelligence");
+  const languageOptions = supportedLocales().map((locale) => `
+          <option value="${locale}" ${getLocale() === locale ? "selected" : ""}>${escapeHtml(t(languageLabelKeys[locale]))}</option>`).join("");
   app.innerHTML = `<div class="shell">
     <aside class="sidebar ${state.mobileNavOpen ? "nav-open" : ""}">
       <a class="brand" href="#/overview" aria-label="${t("brand.home")}" data-action="navigate" data-view="overview">
@@ -155,7 +166,7 @@ function renderShell() {
             ${state.seedLoading ? t("common.loadingSamples") : t("common.loadSampleData")}
           </button>
         </div>
-        <p class="version-note">LibScope v0.1.0 · Apache-2.0</p>
+        <p class="version-note">${t("common.versionNote", { version: "0.1.0", license: "Apache-2.0" })}</p>
       </div>
     </aside>
     <main id="main-content" class="main-content">
@@ -163,9 +174,7 @@ function renderShell() {
         <div class="toolbar-context"><span class="eyebrow">${escapeHtml(toolbarLabel)}</span></div>
         <div class="toolbar-controls">
         <label class="language-control"><span class="sr-only">${t("language.label")}</span><select id="language-select" aria-label="${t("language.label")}">
-          <option value="en" ${getLocale() === "en" ? "selected" : ""}>${t("language.english")}</option>
-          <option value="fa" ${getLocale() === "fa" ? "selected" : ""}>${t("language.persian")}</option>
-          <option value="ar" ${getLocale() === "ar" ? "selected" : ""}>${t("language.arabic")}</option>
+          ${languageOptions}
         </select></label>
         <button class="theme-toggle" type="button" data-action="toggle-theme" aria-label="${escapeHtml(themeLabel)}" title="${escapeHtml(themeLabel)}">
           ${themeIcon}<span class="sr-only">${themeLabel}</span>
@@ -501,12 +510,28 @@ function renderHistory(pkg) {
   const growth = latest?.growth_rate;
   const average = pkg.total_downloads_30d == null ? null : Math.round(pkg.total_downloads_30d / 30);
   const points = history.historical_chart_points || [];
+  const quality = history.download_data_quality || {};
+  const qualityStatus = ["complete", "partial", "unavailable"].includes(quality.status)
+    ? quality.status
+    : "unknown";
   return `<div class="stack">
     <div class="stat-grid three">
-      <article class="stat-card"><span>${t("history.downloads30d")}</span><strong>${number(pkg.total_downloads_30d)}</strong><small>${t("history.mirrors")}</small></article>
+      <article class="stat-card"><span>${t("history.downloads30d")}</span><strong>${number(pkg.total_downloads_30d)}</strong><small>${t("history.downloadCaveat")}</small></article>
       <article class="stat-card"><span>${t("history.growth")}</span><strong>${growth == null ? t("common.na") : `${number(growth, 2)}%`}</strong><small>${t("history.latestSnapshot")}</small></article>
       <article class="stat-card"><span>${t("history.average")}</span><strong>${average == null ? t("common.na") : number(average)}</strong><small>${t("history.averageDefinition")}</small></article>
     </div>
+    <article class="panel"><div class="section-heading"><div><h2>${t("history.dataQualityTitle")}</h2><p>${t(`history.quality.${qualityStatus}`)}</p></div></div>
+      <dl class="details-list">
+        <div><dt>${t("history.dataSource")}</dt><dd>${quality.source ? escapeHtml(quality.source) : t("common.unknown")}</dd></div>
+        <div><dt>${t("history.availablePeriods")}</dt><dd>${quality.available_periods?.length ? escapeHtml(quality.available_periods.join(", ")) : t("common.unknown")}</dd></div>
+        <div><dt>${t("history.observedDays")}</dt><dd>${quality.observed_days == null ? t("common.unknown") : number(quality.observed_days)}</dd></div>
+        <div><dt>${t("history.latestObservation")}</dt><dd><bdi>${escapeHtml(quality.latest_observation_date || t("common.unknown"))}</bdi></dd></div>
+        <div><dt>${t("history.mirrorTreatment")}</dt><dd>${quality.mirror_inclusive === true ? t("history.mirrorInclusive") : quality.mirror_inclusive === false ? t("history.mirrorExcluded") : t("common.unknown")}</dd></div>
+        <div><dt>${t("history.estimated")}</dt><dd>${quality.is_estimated ? t("common.yes") : t("common.no")}</dd></div>
+        ${quality.source_url ? `<div><dt>${t("history.sourceLink")}</dt><dd>${safeExternalLink(quality.source_url, t("history.sourceLink"))}</dd></div>` : ""}
+      </dl>
+      ${(quality.caveats || []).map((item) => `<p class="caveat">${escapeHtml(item)}</p>`).join("")}
+    </article>
     <article class="panel"><div class="section-heading"><div><h2>${t("history.title")}</h2><p>${escapeHtml(history.summary || t("history.noSnapshotsSummary"))}</p></div><span class="badge muted">${t("history.records", { count: number(history.total_snapshots_recorded) })}</span></div>
       ${renderHistoryChart(points)}
       ${history.deltas?.length ? renderHistoryDeltas(history.deltas) : `<p class="field-help">${t("history.minimumSnapshots")}</p>`}
@@ -745,7 +770,9 @@ function renderSettings() {
     <article class="panel stack">
       <h2>${t("settings.ai")}</h2><p>${t("settings.aiHelp")}</p>
       <dl class="details-list"><div><dt>${t("settings.provider")}</dt><dd><bdi>${escapeHtml(info?.ai_provider || (state.settingsLoading ? t("settings.loading") : t("settings.unknown")))}</bdi></dd></div>
+      <div><dt>${t("settings.aiModel")}</dt><dd><bdi>${escapeHtml(info?.ai_model || t("settings.unknown"))}</bdi></dd></div>
       <div><dt>${t("settings.credentials")}</dt><dd>${info?.ai_configured ? t("settings.configured") : state.settingsLoading ? t("settings.loading") : t("settings.deterministic")}</dd></div></dl>
+      <p class="field-help">${t("settings.aiProviders")} ${escapeHtml((info?.ai_supported_providers || []).map((provider) => provider.name).join(", "))}</p>
     </article>
     <article class="panel stack">
       <h2>${t("settings.security")}</h2><p>${t("settings.securityHelp")}</p>
