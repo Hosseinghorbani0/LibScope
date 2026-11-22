@@ -29,10 +29,11 @@ def test_static_dashboard_and_native_assets_are_served():
     api_module = client.get("/dashboard-assets/api.js")
     stylesheet = client.get("/dashboard-assets/styles.css")
     favicon = client.get("/dashboard-assets/favicon.svg")
-    locales = [
-        client.get(f"/dashboard-assets/locales/{locale}.json")
-        for locale in ("en", "fa", "ar")
-    ]
+    locale_codes = ("en", "fa", "ar", "es", "fr", "de", "zh")
+    locales = {
+        locale: client.get(f"/dashboard-assets/locales/{locale}.json")
+        for locale in locale_codes
+    }
     logos = [
         client.get(f"/dashboard-assets/{name}")
         for name in (
@@ -46,7 +47,7 @@ def test_static_dashboard_and_native_assets_are_served():
 
     assert page.status_code == script.status_code == i18n_module.status_code == api_module.status_code == stylesheet.status_code == favicon.status_code == 200
     assert all(response.status_code == 200 for response in logos)
-    assert all(response.status_code == 200 for response in locales)
+    assert all(response.status_code == 200 for response in locales.values())
     assert page.headers["content-type"].startswith("text/html")
     assert script.headers["content-type"].startswith(("text/javascript", "application/javascript"))
     assert stylesheet.headers["content-type"].startswith("text/css")
@@ -57,14 +58,48 @@ def test_static_dashboard_and_native_assets_are_served():
     assert "localStorage" not in api_module.text
     assert "libscope.theme" in script.text
     assert "Authorization" in api_module.text
-    locale_dictionaries = [response.json() for response in locales]
-    assert set(locale_dictionaries[0]) == set(locale_dictionaries[1]) == set(locale_dictionaries[2])
-    for key in locale_dictionaries[0]:
-        placeholders = set(re.findall(r"\{\{(\w+)\}\}", locale_dictionaries[0][key]))
-        assert all(
-            set(re.findall(r"\{\{(\w+)\}\}", dictionary[key])) == placeholders
-            for dictionary in locale_dictionaries[1:]
-        ), key
+    locale_dictionaries = {locale: response.json() for locale, response in locales.items()}
+    english = locale_dictionaries["en"]
+    invariant_labels = {
+        "analysis.pypi",
+        "catalog.version",
+        "catalog.details",
+        "common.na",
+        "common.no",
+        "adoption.classification",
+        "history.dataSource",
+        "security.source",
+        "repository.forks",
+        "repository.fork",
+        "repository.no",
+        "compare.metric.forks",
+        "settings.github",
+        "score.dimensionAdoption",
+        "score.dimensionMaintenance",
+        "score.dimensionDocumentation",
+        "navigation.menu",
+        "language.english",
+        "language.persian",
+        "language.arabic",
+        "language.spanish",
+        "language.french",
+        "language.german",
+        "language.chineseSimplified",
+        "report.json",
+        "report.markdown",
+        "common.details",
+        "status.github",
+        "status.pypi",
+    }
+    for locale, dictionary in locale_dictionaries.items():
+        assert set(dictionary) == set(english)
+        assert all(isinstance(value, str) and value.strip() for value in dictionary.values())
+        for key in english:
+            placeholders = set(re.findall(r"\{\{(\w+)\}\}", english[key]))
+            assert set(re.findall(r"\{\{(\w+)\}\}", dictionary[key])) == placeholders, (locale, key)
+        if locale != "en":
+            untranslated = {key for key, value in dictionary.items() if value == english[key]}
+            assert untranslated <= invariant_labels, (locale, untranslated - invariant_labels)
 
 
 def test_version_endpoint():
@@ -73,6 +108,11 @@ def test_version_endpoint():
     data = resp.json()
     assert data["name"] == "LibScope"
     assert "github_token_configured" in data
+    providers = {provider["id"]: provider for provider in data["ai_supported_providers"]}
+    assert {"openai", "anthropic", "google", "azure"} <= providers.keys()
+    assert providers["openai"]["category"] == "direct"
+    assert "ai_model" in data
+    assert "OPENAI_API_KEY" not in resp.text
 
 
 def test_demo_seed_and_package_list():
@@ -148,6 +188,7 @@ def test_package_history_is_bounded_and_reports_snapshot_count():
     assert data["returned_snapshots"] <= 1
     assert data["total_snapshots_recorded"] >= data["returned_snapshots"]
     assert isinstance(data["historical_chart_points"], list)
+    assert data["download_data_quality"]["status"] == "unknown"
 
 
 def test_package_history_rejects_invalid_limits():
