@@ -6,7 +6,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
-from libscope.ai.config import AIConfig
+from libscope.ai.config import AI_PROVIDER_CATALOG, AIConfig
 from libscope.ai.exceptions import (
     LibScopeAIConfigError,
     map_ask_ai_exception,
@@ -51,7 +51,11 @@ class AskAIClient:
         timeout = self.config.timeout
 
         try:
-            supported_providers = {"openrouter", "default", "openai", "anthropic", "google", "gemini", "groq", "azure"}
+            supported_providers = {
+                provider_name
+                for provider in AI_PROVIDER_CATALOG
+                for provider_name in (provider["id"], *provider["aliases"])
+            }
             if prov_name not in supported_providers:
                 raise LibScopeAIConfigError(f"Unsupported AI provider '{prov_name}'.")
             if prov_name == "azure":
