@@ -3,8 +3,9 @@ PyPI Package Provider implementation.
 Queries PyPI JSON API and pypistats API.
 """
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from libscope.core.logging import get_logger
@@ -186,55 +187,132 @@ class PyPIProvider(BaseProvider):
         return results
 
     async def fetch_downloads(self, name: str) -> NormalizedDownloads:
-        """Fetch download counts from pypistats.org."""
+        """Fetch mirror-excluded download metrics and track source completeness."""
         clean_name = name.strip().lower()
         client = await self._get_client()
-
-        daily, weekly, monthly = 0, 0, 0
+        encoded_name = quote(clean_name, safe="")
+        recent_url = f"https://pypistats.org/api/packages/{encoded_name}/recent"
+        overall_url = f"https://pypistats.org/api/packages/{encoded_name}/overall"
+        recent_counts: dict[str, int] = {}
+        recent_available = False
         historical: dict[str, int] = {}
-        provenance_notes = "pypistats recent API"
+        historical_available = False
+        is_estimated = False
 
-        # 1. Recent downloads
         try:
-            recent_url = f"https://pypistats.org/api/packages/{clean_name}/recent"
             resp = await client.get(recent_url)
             if resp.status_code == 200:
-                data = resp.json().get("data", {})
-                daily = data.get("last_day", 0)
-                weekly = data.get("last_week", 0)
-                monthly = data.get("last_month", 0)
+                payload = resp.json()
+                data = payload.get("data") if isinstance(payload, dict) else None
+                if isinstance(data, dict):
+                    for period, key in (
+                        ("daily", "last_day"),
+                        ("weekly", "last_week"),
+                        ("monthly", "last_month"),
+                    ):
+                        count = data.get(key)
+                        if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+                            recent_counts[period] = count
+                    recent_available = len(recent_counts) == 3
+                if not recent_available:
+                    logger.warning("PyPI Stats recent response was incomplete for %s", clean_name)
+            else:
+                logger.warning(
+                    "PyPI Stats recent endpoint returned HTTP %s for %s",
+                    resp.status_code,
+                    clean_name,
+                )
         except Exception as exc:
             logger.warning(f"Failed to fetch recent pypistats for {clean_name}: {exc}")
 
-        # 2. Historical overall downloads (last 30-180 days daily breakdown)
         try:
-            overall_url = f"https://pypistats.org/api/packages/{clean_name}/overall"
-            resp = await client.get(overall_url)
+            resp = await client.get(overall_url, params={"mirrors": "false"})
             if resp.status_code == 200:
-                rows = resp.json().get("data", [])
-                for row in rows:
-                    if row.get("category") == "without_mirrors":
-                        dt = row.get("date")
-                        cnt = row.get("downloads", 0)
-                        if dt:
-                            historical[dt] = historical.get(dt, 0) + cnt
-                if historical:
-                    provenance_notes += "; overall daily historical (without mirrors)"
+                payload = resp.json()
+                rows = payload.get("data") if isinstance(payload, dict) else None
+                if isinstance(rows, list):
+                    historical_available = True
+                    for row in rows:
+                        if not isinstance(row, dict):
+                            historical_available = False
+                            continue
+                        if row.get("category") != "without_mirrors":
+                            continue
+                        raw_date = row.get("date")
+                        count = row.get("downloads")
+                        try:
+                            parsed_date = date.fromisoformat(raw_date)
+                        except (TypeError, ValueError):
+                            historical_available = False
+                            continue
+                        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+                            historical_available = False
+                            continue
+                        historical[parsed_date.isoformat()] = (
+                            historical.get(parsed_date.isoformat(), 0) + count
+                        )
+                else:
+                    logger.warning("PyPI Stats overall response was invalid for %s", clean_name)
+            else:
+                logger.warning(
+                    "PyPI Stats overall endpoint returned HTTP %s for %s",
+                    resp.status_code,
+                    clean_name,
+                )
         except Exception as exc:
-            logger.debug(f"Could not fetch historical pypistats for {clean_name}: {exc}")
+            logger.warning(f"Could not fetch historical pypistats for {clean_name}: {exc}")
+
+        latest_date = max(historical, default=None)
+        if historical and not recent_available:
+            latest = date.fromisoformat(latest_date)
+            for period, days in (("daily", 1), ("weekly", 7), ("monthly", 30)):
+                if period in recent_counts:
+                    continue
+                start = latest - timedelta(days=days - 1)
+                window = {
+                    day: count
+                    for day, count in historical.items()
+                    if start <= date.fromisoformat(day) <= latest
+                }
+                minimum_observations = max(1, int(days * 0.9))
+                if len(window) >= minimum_observations:
+                    recent_counts[period] = sum(window.values())
+                    is_estimated = True
+
+        data_status = (
+            "complete"
+            if recent_available and historical_available
+            else "partial"
+            if recent_counts or historical_available or historical
+            else "unavailable"
+        )
+        provenance_notes = (
+            "PyPI Stats excludes known mirrors. Recent aggregate and daily historical "
+            "series are fetched independently; figures are downloads, not unique users."
+        )
+        if not recent_available:
+            provenance_notes += " Recent aggregate endpoint was incomplete or unavailable."
+        if not historical_available:
+            provenance_notes += " Historical endpoint was incomplete or unavailable."
 
         return NormalizedDownloads(
             package_name=clean_name,
             ecosystem="pypi",
-            daily=daily,
-            weekly=weekly,
-            monthly=monthly,
+            daily=recent_counts.get("daily", 0),
+            weekly=recent_counts.get("weekly", 0),
+            monthly=recent_counts.get("monthly", 0),
             historical=historical,
-            mirror_inclusive=False if historical else True,
-            is_estimated=False,
+            mirror_inclusive=False,
+            is_estimated=is_estimated,
+            data_status=data_status,
+            available_periods=[
+                period for period in ("daily", "weekly", "monthly") if period in recent_counts
+            ],
+            observed_days=len(historical),
+            latest_observation_date=latest_date,
             provenance=DataProvenance(
                 source_name="pypistats",
-                url_accessed=f"https://pypistats.org/api/packages/{clean_name}/recent",
+                url_accessed=recent_url,
                 notes=provenance_notes,
             ),
         )
