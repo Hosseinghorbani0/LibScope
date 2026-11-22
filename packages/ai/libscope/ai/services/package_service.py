@@ -24,7 +24,7 @@ class PackageAnalysisService:
         latest_version: str | None,
         license_str: str | None,
         repo_url: str | None,
-        monthly_downloads: int,
+        monthly_downloads: int | None,
         mirror_inclusive: bool,
         growth_trend: str,
         stars: int,
@@ -38,6 +38,7 @@ class PackageAnalysisService:
         overall_score: float | None,
         confidence_level: str,
         raw_description: str | None,
+        download_data_status: str = "unknown",
     ) -> PackageAnalysisOutput:
         """
         Generate structured package analysis using askai-python or deterministic fallback.
@@ -52,8 +53,16 @@ class PackageAnalysisService:
             latest_version=latest_version or "Unknown",
             license=license_str or "Unspecified",
             repo_url=repo_url or "None",
-            monthly_downloads=monthly_downloads,
-            mirror_note="includes automated CI mirrors" if mirror_inclusive else "mirror-exclusive",
+            monthly_downloads=(
+                f"{monthly_downloads:,}" if monthly_downloads is not None else "Unavailable"
+            ),
+            mirror_note=(
+                "not verified"
+                if download_data_status == "unavailable"
+                else "includes automated CI mirrors"
+                if mirror_inclusive
+                else "excludes known mirrors"
+            ),
             growth_trend=growth_trend,
             stars=stars,
             forks=forks,
