@@ -109,9 +109,17 @@ Generated: `{now}` | Scoring Model: `{score.get('version', 'v1.0.0')}` | Confide
 - **7-Day Moving Average:** `{_format_metric(dl.get('moving_average_7d'))}`
 - **30-Day Moving Average:** `{_format_metric(dl.get('moving_average_30d'))}`
 - **Mirror Inclusive:** `{dl.get('mirror_inclusive', True)}`
+- **Data Status / Source:** `{dl.get('data_status', 'unknown')}` / `{dl.get('data_source') or 'Unknown'}`
+- **Historical Observations:** `{_format_metric(dl.get('observed_days'))}` days through `{dl.get('latest_observation_date') or 'Unknown'}`
+- **Available Periods:** `{', '.join(dl.get('available_periods', [])) or 'Unknown'}`
+- **Estimated Totals:** `{dl.get('is_estimated', False)}`
 
 > **Note on Downloads:** Downloads represent automated CI runs, build scripts, mirror servers, and automated tools. They must not be equated with unique active developers.
 """
+    if dl.get("source_url"):
+        md += f"\n> **Source:** {dl['source_url']}\n"
+    for caveat in dl.get("caveats", []) or []:
+        md += f"> *{caveat}*\n"
 
     anomalies = dl.get("anomalies", [])
     if anomalies:
