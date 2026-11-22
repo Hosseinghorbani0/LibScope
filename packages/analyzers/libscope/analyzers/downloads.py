@@ -34,6 +34,12 @@ class DownloadAnalyticsResult:
     monthly_downloads: int
     is_missing_data: bool
     mirror_inclusive: bool
+    data_status: str
+    data_source: str | None
+    is_estimated: bool
+    available_periods: list[str]
+    observed_days: int
+    latest_observation_date: str | None
     growth_rate_pct: float | None  # e.g. weekly growth
     moving_average_7d: float | None
     moving_average_30d: float | None
@@ -57,8 +63,27 @@ class DownloadsAnalyzer:
         ]
         if downloads.mirror_inclusive:
             caveats.append("Metrics may include automated mirror synchronizations.")
+        if downloads.provenance and downloads.provenance.notes:
+            caveats.append(downloads.provenance.notes)
+        if downloads.data_status == "partial":
+            caveats.append("Download statistics are partial; some source endpoints did not return valid data.")
+        elif downloads.data_status == "unavailable":
+            caveats.append("Download statistics could not be verified from the configured registry source.")
+        if downloads.is_estimated:
+            caveats.append("One or more recent-period totals were estimated from the available daily history.")
 
-        is_missing = downloads.monthly == 0 and not downloads.historical
+        has_observations = bool(downloads.historical) or any(
+            (downloads.daily, downloads.weekly, downloads.monthly)
+        )
+        is_missing = (
+            downloads.data_status == "unavailable"
+            or (downloads.data_status == "partial" and not has_observations)
+            or (
+                downloads.data_status == "unknown"
+                and downloads.monthly == 0
+                and not downloads.historical
+            )
+        )
         if is_missing:
             caveats.append("No historical download records available from registry.")
             return DownloadAnalyticsResult(
@@ -70,6 +95,12 @@ class DownloadsAnalyzer:
                 monthly_downloads=0,
                 is_missing_data=True,
                 mirror_inclusive=downloads.mirror_inclusive,
+                data_status=downloads.data_status,
+                data_source=downloads.provenance.source_name if downloads.provenance else None,
+                is_estimated=downloads.is_estimated,
+                available_periods=downloads.available_periods,
+                observed_days=downloads.observed_days,
+                latest_observation_date=downloads.latest_observation_date,
                 growth_rate_pct=None,
                 moving_average_7d=None,
                 moving_average_30d=None,
@@ -180,6 +211,14 @@ class DownloadsAnalyzer:
             monthly_downloads=downloads.monthly,
             is_missing_data=False,
             mirror_inclusive=downloads.mirror_inclusive,
+            data_status=downloads.data_status,
+            data_source=downloads.provenance.source_name if downloads.provenance else None,
+            is_estimated=downloads.is_estimated,
+            available_periods=downloads.available_periods or (
+                ["daily", "weekly", "monthly"] if downloads.data_status == "unknown" else []
+            ),
+            observed_days=downloads.observed_days,
+            latest_observation_date=downloads.latest_observation_date,
             growth_rate_pct=growth_rate,
             moving_average_7d=ma7,
             moving_average_30d=ma30,
