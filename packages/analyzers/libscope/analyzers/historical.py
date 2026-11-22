@@ -59,7 +59,7 @@ class HistoricalAnalyzer:
         for s in sorted_snaps:
             chart_points.append({
                 "date": s.get("recorded_at").strftime("%Y-%m-%d") if isinstance(s.get("recorded_at"), datetime) else str(s.get("recorded_at")),
-                "downloads": s.get("downloads_count", 0),
+                "downloads": s.get("downloads_count"),
                 "stars": s.get("stars_count", 0),
                 "forks": s.get("forks_count", 0),
             })
@@ -69,33 +69,36 @@ class HistoricalAnalyzer:
             latest = sorted_snaps[-1]
             prev = sorted_snaps[-2]
 
-            prev_dl = prev.get("downloads_count", 0)
-            curr_dl = latest.get("downloads_count", 0)
-            dl_delta = curr_dl - prev_dl
-            dl_delta_pct = round((dl_delta / max(1, prev_dl)) * 100.0, 2) if prev_dl > 0 else None
+            prev_dl = prev.get("downloads_count")
+            curr_dl = latest.get("downloads_count")
+            if prev_dl is not None and curr_dl is not None:
+                dl_delta = curr_dl - prev_dl
+                dl_delta_pct = round((dl_delta / max(1, prev_dl)) * 100.0, 2) if prev_dl > 0 else None
 
-            stars_delta = (latest.get("stars_count") or 0) - (prev.get("stars_count") or 0)
-            forks_delta = (latest.get("forks_count") or 0) - (prev.get("forks_count") or 0)
+                stars_delta = (latest.get("stars_count") or 0) - (prev.get("stars_count") or 0)
+                forks_delta = (latest.get("forks_count") or 0) - (prev.get("forks_count") or 0)
 
-            deltas.append(
-                SnapshotDelta(
-                    period="since_previous",
-                    previous_date=prev.get("recorded_at", now),
-                    current_date=latest.get("recorded_at", now),
-                    downloads_delta=dl_delta,
-                    downloads_delta_pct=dl_delta_pct,
-                    stars_delta=stars_delta,
-                    forks_delta=forks_delta,
-                    score_delta=None,
-                    new_adoptions_count=0,
-                    new_vulnerabilities_count=0,
+                deltas.append(
+                    SnapshotDelta(
+                        period="since_previous",
+                        previous_date=prev.get("recorded_at", now),
+                        current_date=latest.get("recorded_at", now),
+                        downloads_delta=dl_delta,
+                        downloads_delta_pct=dl_delta_pct,
+                        stars_delta=stars_delta,
+                        forks_delta=forks_delta,
+                        score_delta=None,
+                        new_adoptions_count=0,
+                        new_vulnerabilities_count=0,
+                    )
                 )
-            )
 
         summary = f"Recorded {len(sorted_snaps)} snapshots over time for {package_name}."
         if deltas:
             d = deltas[0]
             summary += f" Recent delta: {d.downloads_delta:+d} downloads, {d.stars_delta:+d} stars."
+        elif len(sorted_snaps) >= 2:
+            summary += " Download change is unavailable because a snapshot lacks verified download data."
 
         return HistoricalAnalysisResult(
             package_name=package_name,
