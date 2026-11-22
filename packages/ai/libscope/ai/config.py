@@ -6,6 +6,51 @@ from dataclasses import dataclass
 
 from libscope.core.config import get_settings
 
+AI_PROVIDER_CATALOG = (
+    {
+        "id": "openai",
+        "name": "OpenAI",
+        "credential_env": "OPENAI_API_KEY",
+        "category": "direct",
+        "aliases": [],
+    },
+    {
+        "id": "anthropic",
+        "name": "Anthropic",
+        "credential_env": "ANTHROPIC_API_KEY",
+        "category": "direct",
+        "aliases": [],
+    },
+    {
+        "id": "google",
+        "name": "Google Gemini",
+        "credential_env": "GOOGLE_API_KEY or GEMINI_API_KEY",
+        "category": "direct",
+        "aliases": ["gemini"],
+    },
+    {
+        "id": "azure",
+        "name": "Azure OpenAI",
+        "credential_env": "AZURE_OPENAI_API_KEY",
+        "category": "direct",
+        "aliases": [],
+    },
+    {
+        "id": "openrouter",
+        "name": "OpenRouter",
+        "credential_env": "OPENROUTER_API_KEY",
+        "category": "gateway",
+        "aliases": ["default"],
+    },
+    {
+        "id": "groq",
+        "name": "Groq",
+        "credential_env": "GROQ_API_KEY",
+        "category": "inference",
+        "aliases": [],
+    },
+)
+
 
 @dataclass
 class AIConfig:
