@@ -11,6 +11,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, sta
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from libscope.ai.config import AI_PROVIDER_CATALOG
 from libscope.analyzers.competitor import CompetitorAnalyzer
 from libscope.analyzers.health import normalize_health_rating
 from libscope.analyzers.historical import HistoricalAnalyzer
@@ -125,7 +126,12 @@ def get_version():
         "name": settings.app_name,
         "version": settings.app_version,
         "ai_provider": settings.ai_provider,
+        "ai_model": settings.azure_deployment if settings.ai_provider == "azure" else settings.ai_model,
         "ai_configured": bool(settings.effective_ai_api_key),
+        "ai_supported_providers": [
+            {"id": provider["id"], "name": provider["name"], "category": provider["category"]}
+            for provider in AI_PROVIDER_CATALOG
+        ],
         "github_token_configured": bool(settings.effective_github_token),
     }
 
@@ -237,7 +243,12 @@ def get_package_detail(package_id: int, db: Session = Depends(get_db)):
     vuln_count = db.query(SecurityFinding).filter_by(package_id=package_id).count()
 
     latest_snap = db.query(MetricSnapshot).filter_by(package_id=package_id).order_by(desc(MetricSnapshot.recorded_at)).first()
-    monthly_dl = latest_snap.downloads_count if latest_snap else None
+    latest_snapshot_metadata = _snapshot_metadata(latest_snap)
+    monthly_dl = (
+        None
+        if not latest_snap or latest_snapshot_metadata.get("download_monthly_available") is False
+        else latest_snap.downloads_count
+    )
 
     return PackageDetailRead(
         id=pkg.id,
@@ -304,13 +315,18 @@ def get_package_history(
         [
             {
                 "recorded_at": snapshot.recorded_at,
-                "downloads_count": snapshot.downloads_count,
+                "downloads_count": (
+                    None
+                    if _snapshot_metadata(snapshot).get("download_monthly_available") is False
+                    else snapshot.downloads_count
+                ),
                 "stars_count": snapshot.stars_count,
                 "forks_count": snapshot.forks_count,
             }
             for snapshot in snapshots
         ],
     )
+    latest_snapshot_metadata = _snapshot_metadata(snapshots[-1] if snapshots else None)
     return {
         "package_name": result.package_name,
         "analyzed_at": result.analyzed_at,
@@ -319,6 +335,19 @@ def get_package_history(
         "deltas": [delta.__dict__ for delta in result.deltas],
         "historical_chart_points": result.historical_chart_points,
         "summary": result.summary,
+        "download_data_quality": {
+            "status": latest_snapshot_metadata.get("download_data_status", "unknown"),
+            "source": latest_snapshot_metadata.get("download_data_source"),
+            "is_estimated": latest_snapshot_metadata.get("download_data_estimated", False),
+            "available_periods": latest_snapshot_metadata.get("download_available_periods", []),
+            "observed_days": latest_snapshot_metadata.get("download_observed_days"),
+            "latest_observation_date": latest_snapshot_metadata.get(
+                "download_latest_observation_date"
+            ),
+            "source_url": latest_snapshot_metadata.get("download_data_source_url"),
+            "mirror_inclusive": latest_snapshot_metadata.get("mirror_inclusive"),
+            "caveats": latest_snapshot_metadata.get("download_caveats", []),
+        },
     }
 
 
@@ -481,7 +510,12 @@ def compare_packages(
             "ecosystem": p.ecosystem,
             "overall_score": latest_score.overall_score if latest_score else None,
             "confidence": latest_score.confidence_level if latest_score else "low",
-            "monthly_downloads": latest_snap.downloads_count if latest_snap else None,
+            "monthly_downloads": (
+                None
+                if not latest_snap
+                or _snapshot_metadata(latest_snap).get("download_monthly_available") is False
+                else latest_snap.downloads_count
+            ),
             "weekly_downloads": 0,
             "stars": repo.stars if repo else None,
             "forks": repo.forks if repo else None,
@@ -571,11 +605,24 @@ def generate_report(
             "is_fork": repo.is_fork if repo else False,
         },
         "downloads": {
-            "monthly": snap.downloads_count if snap else None,
+            "monthly": (
+                None
+                if not snap or snapshot_metadata.get("download_monthly_available") is False
+                else snap.downloads_count
+            ),
             "weekly": snapshot_metadata.get("weekly"),
             "daily": snapshot_metadata.get("daily"),
             "growth_rate_pct": snap.growth_rate if snap else None,
             "mirror_inclusive": snapshot_metadata.get("mirror_inclusive"),
+            "data_status": snapshot_metadata.get("download_data_status", "unknown"),
+            "data_source": snapshot_metadata.get("download_data_source"),
+            "is_estimated": snapshot_metadata.get("download_data_estimated", False),
+            "available_periods": snapshot_metadata.get("download_available_periods", []),
+            "data_missing": snapshot_metadata.get("download_data_missing", False),
+            "observed_days": snapshot_metadata.get("download_observed_days", 0),
+            "latest_observation_date": snapshot_metadata.get("download_latest_observation_date"),
+            "source_url": snapshot_metadata.get("download_data_source_url"),
+            "caveats": snapshot_metadata.get("download_caveats", []),
         },
         "adoption": {
             "status": snapshot_metadata.get("adoption_status", "not_checked"),
