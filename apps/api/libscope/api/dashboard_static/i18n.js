@@ -1,6 +1,18 @@
 const LOCALE_STORAGE_KEY = "libscope.locale";
 const LOCALE_PATH = "/dashboard-assets/locales";
-const SUPPORTED_LOCALES = new Set(["en", "fa", "ar"]);
+const SUPPORTED_LOCALES = ["en", "fa", "ar", "es", "fr", "de", "zh"];
+const SUPPORTED_LOCALE_SET = new Set(SUPPORTED_LOCALES);
+const RTL_LOCALES = new Set(["fa", "ar"]);
+const HTML_LOCALES = { zh: "zh-Hans" };
+const INTL_LOCALES = {
+  en: "en-US",
+  fa: "fa-IR",
+  ar: "ar",
+  es: "es-ES",
+  fr: "fr-FR",
+  de: "de-DE",
+  zh: "zh-CN",
+};
 
 let activeLocale = "en";
 let dictionaries = {};
@@ -19,12 +31,25 @@ async function loadDictionary(locale) {
   if (!response.ok) throw new Error(`Unable to load the ${locale} translation file (HTTP ${response.status}).`);
   const dictionary = await response.json();
   if (!isDictionary(dictionary)) throw new Error(`The ${locale} translation file is not a flat string dictionary.`);
+  if (locale !== "en" && dictionaries.en) {
+    const expectedKeys = Object.keys(dictionaries.en).sort();
+    const actualKeys = Object.keys(dictionary).sort();
+    if (expectedKeys.length !== actualKeys.length || expectedKeys.some((key, index) => key !== actualKeys[index])) {
+      throw new Error(`The ${locale} translation file does not have complete key coverage.`);
+    }
+    for (const key of expectedKeys) {
+      const placeholders = (message) => [...message.matchAll(/\{\{(\w+)\}\}/g)].map((match) => match[1]).sort();
+      if (JSON.stringify(placeholders(dictionary[key])) !== JSON.stringify(placeholders(dictionaries.en[key]))) {
+        throw new Error(`The ${locale} translation for "${key}" has mismatched placeholders.`);
+      }
+    }
+  }
   return dictionary;
 }
 
 function setDocumentLocale(locale) {
-  document.documentElement.lang = locale;
-  document.documentElement.dir = locale === "en" ? "ltr" : "rtl";
+  document.documentElement.lang = HTML_LOCALES[locale] || locale;
+  document.documentElement.dir = RTL_LOCALES.has(locale) ? "rtl" : "ltr";
   document.title = dictionaries[locale]?.["document.title"] ?? dictionaries.en?.["document.title"] ?? "LibScope";
   const description = document.querySelector('meta[name="description"]');
   if (description) {
@@ -36,7 +61,7 @@ function setDocumentLocale(locale) {
 function readSavedLocale() {
   try {
     const saved = localStorage.getItem(LOCALE_STORAGE_KEY);
-    return SUPPORTED_LOCALES.has(saved) ? saved : "en";
+    return SUPPORTED_LOCALE_SET.has(saved) ? saved : "en";
   } catch (error) {
     console.warn("Unable to read the saved language preference.", error);
     return "en";
@@ -62,7 +87,7 @@ export async function initializeI18n() {
 }
 
 export async function setLocale(locale) {
-  if (!SUPPORTED_LOCALES.has(locale)) throw new Error(`Unsupported locale: ${locale}`);
+  if (!SUPPORTED_LOCALE_SET.has(locale)) throw new Error(`Unsupported locale: ${locale}`);
   if (!dictionaries[locale]) dictionaries[locale] = await loadDictionary(locale);
   activeLocale = locale;
   setDocumentLocale(locale);
@@ -78,7 +103,7 @@ export function getLocale() {
 }
 
 export function getIntlLocale() {
-  return { en: "en-US", fa: "fa-IR", ar: "ar" }[activeLocale] || "en-US";
+  return INTL_LOCALES[activeLocale] || "en-US";
 }
 
 export function t(key, variables = {}) {
@@ -87,7 +112,7 @@ export function t(key, variables = {}) {
     reportedMissing.add(`${activeLocale}:${key}`);
     console.error(`Missing "${key}" translation for locale "${activeLocale}".`);
   }
-  const message = localized ?? dictionaries.en?.[key];
+  const message = localized;
   if (message === undefined) {
     if (!reportedMissing.has(`en:${key}`)) {
       reportedMissing.add(`en:${key}`);
