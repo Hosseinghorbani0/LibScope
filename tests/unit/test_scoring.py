@@ -97,3 +97,12 @@ def test_failed_security_lookup_is_not_scored_as_clean():
     assert res.dimensions["security"].score is None
     assert "inferred" in res.dimensions["security"].explanation
 
+
+def test_unavailable_downloads_are_not_scored_as_zero_downloads():
+    popularity = ScoringEngine()._calc_popularity(monthly_downloads=None, stars=120)
+
+    assert popularity.inputs["monthly_downloads"] is None
+    assert popularity.score is not None
+    assert popularity.confidence == "low"
+    assert "unavailable" in popularity.explanation
+
