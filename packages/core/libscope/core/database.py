@@ -9,12 +9,25 @@ from libscope.core.config import get_settings
 from libscope.core.logging import get_logger
 from libscope.core.models import Base
 from sqlalchemy import create_engine, event
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 logger = get_logger("database")
 
 _engine = None
 _SessionFactory = None
+
+
+def _normalize_sqlite_url(db_url: str) -> str:
+    url = make_url(db_url)
+    if not url.database:
+        raise ValueError("SQLite database URL must include a database path.")
+
+    path = Path(url.database)
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return url.set(database=str(path.resolve())).render_as_string(hide_password=False)
 
 
 def get_engine():
@@ -26,14 +39,7 @@ def get_engine():
 
         # Ensure sqlite parent directory exists
         if db_url.startswith("sqlite:///"):
-            sqlite_path = db_url.replace("sqlite:///", "")
-            # Handle relative vs absolute paths
-            p = Path(sqlite_path)
-            if not p.is_absolute():
-                p = Path.cwd() / p
-            p.parent.mkdir(parents=True, exist_ok=True)
-            db_url = f"sqlite:///{p.resolve()}"
-
+            db_url = _normalize_sqlite_url(db_url)
             _engine = create_engine(
                 db_url,
                 connect_args={"check_same_thread": False},
