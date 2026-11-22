@@ -9,7 +9,7 @@ PACKAGE METRICS & IDENTITY:
 - Latest Version: {latest_version}
 - License: {license}
 - Repository: {repo_url}
-- Monthly Downloads: {monthly_downloads:,} ({mirror_note})
+- Monthly Downloads: {monthly_downloads} ({mirror_note})
 - Recent Growth Trend: {growth_trend}
 - GitHub Stars: {stars:,} | Forks: {forks:,} | Open Issues: {open_issues:,}
 - Commit Freshness: Last commit {days_since_commit} days ago, last release {days_since_release} days ago
