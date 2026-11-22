@@ -61,6 +61,8 @@ node_modules/
 apps/dashboard/node_modules/
 apps/dashboard/dist/
 apps/dashboard/.vite/
+desktop-build/
+release/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
