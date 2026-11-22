@@ -199,7 +199,11 @@ async def _run_package_analysis(
 
     score_result = scoring_engine.calculate_score(
         package_name=package_name,
-        monthly_downloads=dl_analytics.monthly_downloads,
+        monthly_downloads=(
+            None
+            if "monthly" not in dl_analytics.available_periods
+            else dl_analytics.monthly_downloads
+        ),
         stars=repo_data.stars if repo_data else 0,
         growth_rate_pct=dl_analytics.growth_rate_pct,
         recent_trend=dl_analytics.recent_trend_direction,
@@ -236,7 +240,11 @@ async def _run_package_analysis(
                 overall_score=score_result.overall_score,
                 confidence_level=score_result.confidence_level,
                 dimension_breakdown=score_result.explanation,
-                monthly_downloads=dl_analytics.monthly_downloads,
+                monthly_downloads=(
+                    None
+                    if "monthly" not in dl_analytics.available_periods
+                    else dl_analytics.monthly_downloads
+                ),
                 mirror_inclusive=dl_analytics.mirror_inclusive,
                 growth_trend=dl_analytics.recent_trend_direction,
                 stars=repo_data.stars if repo_data else 0,
@@ -331,6 +339,18 @@ async def _run_package_analysis(
                 {
                     "daily": dl_analytics.daily_downloads,
                     "weekly": dl_analytics.weekly_downloads,
+                    "download_data_status": dl_analytics.data_status,
+                    "download_data_missing": dl_analytics.is_missing_data,
+                    "download_available_periods": dl_analytics.available_periods,
+                    "download_monthly_available": "monthly" in dl_analytics.available_periods,
+                    "download_data_source": dl_analytics.data_source,
+                    "download_data_estimated": dl_analytics.is_estimated,
+                    "download_observed_days": dl_analytics.observed_days,
+                    "download_latest_observation_date": dl_analytics.latest_observation_date,
+                    "download_data_source_url": (
+                        downloads.provenance.url_accessed if downloads.provenance else None
+                    ),
+                    "download_caveats": dl_analytics.caveats,
                     "adoption_status": adoption_search_status,
                     "adoption_caveats": adoption_search_caveats,
                     "security_status": sec_report.status,
